@@ -173,3 +173,52 @@ Sydney Movies App is a personalized movie diary designed for film enthusiasts wh
 - Mobile-first performance with fast perceived response when filtering.
 - Secure handling of secrets via environment variables in `.env` (never committed).
 - Basic monitoring/logging of API errors and key user flows (auth, CRUD, filters, recommendations).
+
+---
+
+## 5. Project Structure
+
+The implementation is organized into clear, top-level directories to separate concerns between frontend, backend, database, and documentation.
+
+### 5.1 Repository Layout
+
+- `/client`  
+  React + Vite PWA frontend.  
+  Responsible for:
+  - Rendering the movie diary/watchlist UI.
+  - Filters, search, and recommendations presentation.
+  - Client-side routing (Auth, Watchlist, Movie Detail, Settings).
+  - Offline-friendly experience via PWA features.
+
+- `/api`  
+  Express (Node.js) backend.  
+  Responsible for:
+  - REST endpoints for auth, movie CRUD, filtering, and recommendations.
+  - Integrations with Supabase (auth/db) and external movie APIs (e.g., TMDB/IMDb).
+  - Centralized validation, error handling, and logging.
+
+- `/supabase`  
+  Database definition and tooling.  
+  Responsible for:
+  - SQL migrations for the PostgreSQL schema (users, movies, preferences, events, etc.).
+  - Seed data for local development and demos.
+  - Any Supabase-specific configuration notes.
+
+- `/docs`  
+  Product and engineering documentation.  
+  Contains:
+  - PRD ([prd.md](cci:7://file:///c:/Users/Ethan/CascadeProjects/Sydney_Movies_App/docs/prd.md:0:0-0:0)).
+  - Task list & acceptance criteria ([task_list.md](cci:7://file:///c:/Users/Ethan/CascadeProjects/Sydney_Movies_App/docs/task_list.md:0:0-0:0)).
+  - Workspace rules ([workspace_rules.md](cci:7://file:///c:/Users/Ethan/CascadeProjects/Sydney_Movies_App/docs/workspace_rules.md:0:0-0:0)).
+  - Future documents (OpenAPI spec, architecture diagrams, deployment notes).
+
+- [README.md](cci:7://file:///C:/Users/Ethan/CascadeProjects/Sydney_Movies_App/README.md:0:0-0:0)  
+  High-level overview and developer onboarding.  
+  Links to key docs and describes how to run `/client`, `/api`, and `/supabase` locally.
+
+### 5.2 Responsibilities & Boundaries
+
+- Business logic that combines data and rules (e.g., recommendations, filter rules) should live in **backend services (`/api`)**, exposed via APIs.
+- The frontend (`/client`) focuses on **rendering, UX, and orchestration** of API calls, not duplicating complex domain logic.
+- Schema changes are always introduced via **migrations in `/supabase`**, never by ad-hoc changes in a running database.
+- Documentation in `/docs` is the **source of truth** for product scope, tasks, and working agreements.
