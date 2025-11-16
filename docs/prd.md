@@ -116,3 +116,60 @@ Sydney Movies App is a personalized movie diary designed for film enthusiasts wh
 - No professional critic reviews beyond viewer ratings.
 - No advanced parental controls (beyond rating/content filters).
 - Limited API integration with mainstream platforms only (e.g., selected IMDb/TMDB endpoints).
+
+---
+
+## 4. Technical Stack & Architecture Overview
+
+### 4.1 Client (Frontend)
+
+- **Framework:** React  
+- **Build tool / Dev server:** Vite  
+- **Language:** TypeScript  
+- **Form factor:** Mobile-first responsive web app, installable PWA  
+- **Key responsibilities:**
+  - Render movie watchlist, filters, recommendations, and detail views.
+  - Manage client-side routing (Auth, Watchlist, Filters/Explore, Movie Detail, Settings).
+  - Communicate with the Express API for auth, CRUD, filters, and recommendations.
+  - Implement offline read-mode for the watchlist via PWA/service worker caching.
+
+### 4.2 API (Backend)
+
+- **Runtime:** Node.js (LTS)  
+- **Framework:** Express  
+- **Language:** TypeScript (preferred) or modern JavaScript (ES modules)  
+- **Key responsibilities:**
+  - Provide REST endpoints for:
+    - User profile & preferences
+    - Movie CRUD (watchlist/diary)
+    - Filtering & search queries
+    - Recommendations (including weekly sets)
+    - Metadata lookup via external APIs (e.g., TMDB/IMDb)
+  - Integrate with Supabase Auth (JWT verification).
+  - Handle request validation, error mapping, and logging.
+
+### 4.3 Database & Supabase
+
+- **Platform:** Supabase (PostgreSQL)  
+- **Data model (high level):**
+  - `users` – identity and profile (linked to Supabase Auth).
+  - `movies` – per-user movie entries (watchlist/diary).
+  - `movie_tags` – optional tags/labels for movies.
+  - `user_preferences` – favorite genres, default filters, family mode.
+  - `recommendation_sets` – cached weekly recommendations per user (MVP optional).
+  - `events` – basic analytics (e.g., time-to-pick, filters used).
+- **Migrations & seeds:**
+  - All schema changes are captured as SQL migrations in `/supabase`.
+  - Deterministic seed data for local development.
+
+### 4.4 External Services
+
+- **Movie metadata APIs:** TMDB/IMDb for title, year, runtime, poster, and trailer links.  
+- **Authentication:** Supabase Auth (email/password or magic link).  
+- **Future optional:** Email provider for weekly recommendation emails.
+
+### 4.5 Non-Functional Technical Requirements
+
+- Mobile-first performance with fast perceived response when filtering.
+- Secure handling of secrets via environment variables in `.env` (never committed).
+- Basic monitoring/logging of API errors and key user flows (auth, CRUD, filters, recommendations).
