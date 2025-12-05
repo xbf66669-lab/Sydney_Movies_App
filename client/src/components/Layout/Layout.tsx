@@ -1,5 +1,6 @@
 // src/components/Layout/Layout.tsx
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 
 export default function Layout() {
   return (
@@ -7,13 +8,55 @@ export default function Layout() {
       {/* Navigation */}
       <nav className="bg-blue-600 text-white p-4 shadow-md">
         <div className="container mx-auto flex justify-between items-center">
-          <Link to="/" className="text-2xl font-bold">Sydney Movies</Link>
+          <NavLink 
+            to="/" 
+            className={({ isActive }) => 
+              `text-2xl font-bold ${isActive ? 'text-blue-200' : ''}`
+            }
+          >
+            Sydney Movies
+          </NavLink>
           <div className="space-x-4">
-            <Link to="/" className="hover:text-blue-200">Home</Link>
-            <Link to="/movies" className="hover:text-blue-200">Movies</Link>
-            <Link to="/watchlist" className="hover:text-blue-200">Watchlist</Link>
-            <Link to="/discover" className="hover:text-blue-200">Discover</Link>
-            <Link to="/profile" className="hover:text-blue-200">Profile</Link>
+            <NavLink 
+              to="/" 
+              className={({ isActive }) => 
+                `hover:text-blue-200 ${isActive ? 'text-blue-200 font-medium' : ''}`
+              }
+            >
+              Home
+            </NavLink>
+            <NavLink 
+              to="/movies" 
+              className={({ isActive }) => 
+                `hover:text-blue-200 ${isActive ? 'text-blue-200 font-medium' : ''}`
+              }
+            >
+              Movies
+            </NavLink>
+            <NavLink 
+              to="/watchlist" 
+              className={({ isActive }) => 
+                `hover:text-blue-200 ${isActive ? 'text-blue-200 font-medium' : ''}`
+              }
+            >
+              Watchlist
+            </NavLink>
+            <NavLink 
+              to="/recommendations" 
+              className={({ isActive }) => 
+                `hover:text-blue-200 ${isActive ? 'text-blue-200 font-medium' : ''}`
+              }
+            >
+              Recommendations
+            </NavLink>
+            <NavLink 
+              to="/profile" 
+              className={({ isActive }) => 
+                `hover:text-blue-200 ${isActive ? 'text-blue-200 font-medium' : ''}`
+              }
+            >
+              Profile
+            </NavLink>
           </div>
         </div>
       </nav>
