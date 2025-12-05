@@ -1,0 +1,1202 @@
+openapi: 3.0.3
+info:
+  title: Sydney Movies App API
+  version: 1.0.0
+  description: |
+    REST API for the Sydney Movies App (Your Cine Stacks). The API mediates all
+    access to the underlying PostgreSQL/Supabase database. The client must
+    never connect directly to the database.
+
+    Key responsibilities:
+    - User profile & preferences
+    - Movies catalog (read-heavy, optional admin CRUD)
+    - Watchlists & items
+    - Genre preferences
+    - Weekly recommendations
+    - Smart filtering & search via query parameters on /movies
+
+servers:
+  - url: https://api.sydney-movies.test/v1
+    description: Local/dev server (example)
+
+tags:
+  - name: Health
+  - name: Auth & Profiles
+  - name: Movies
+  - name: Genres
+  - name: Watchlists
+  - name: Watchlist Items
+  - name: Preferences
+  - name: Recommendations
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns basic service health information.
+      responses:
+        '200':
+          description: API is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  uptimeSeconds:
+                    type: number
+                    format: float
+
+  /profiles/me:
+    get:
+      tags: [Auth & Profiles]
+      summary: Get current user's profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user's profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    patch:
+      tags: [Auth & Profiles]
+      summary: Update current user's profile
+      description: |
+        Partially update the authenticated user's profile (e.g. preferred
+        max rating, language).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateInput'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /movies:
+    get:
+      tags: [Movies]
+      summary: List & search movies
+      description: |
+        Returns a paginated list of movies. Supports keyword search and
+        smart filtering by genre, rating, language, runtime, and sorting
+        (used to power the "smart filtering" and search stories). :contentReference[oaicite:2]{index=2}
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Keyword search on title (case-insensitive).
+        - in: query
+          name: genreId
+          schema:
+            type: integer
+            format: int64
+          description: Filter by genre ID.
+        - in: query
+          name: ageRating
+          schema:
+            type: string
+          description: Filter by MPAA-style age rating (e.g. G, PG, PG-13, R).
+        - in: query
+          name: language
+          schema:
+            type: string
+          description: Filter by original language (e.g. "en", "ja").
+        - in: query
+          name: runtimeMin
+          schema:
+            type: integer
+          description: Minimum runtime in minutes.
+        - in: query
+          name: runtimeMax
+          schema:
+            type: integer
+          description: Maximum runtime in minutes.
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [title, release_year, average_viewer_rating, created_at]
+          description: Sort by field.
+        - in: query
+          name: sortDir
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Sort direction (asc or desc).
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+          description: Page size.
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Offset for pagination.
+      responses:
+        '200':
+          description: List of movies.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Movie'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Movies]
+      summary: Create a new movie (admin/internal)
+      description: |
+        Create a new movie record in the catalog. In production, this would
+        typically be done by an admin service or via TMDB/IMDb sync, not by
+        end-users.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieCreateInput'
+      responses:
+        '201':
+          description: Movie created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /movies/{movieId}:
+    get:
+      tags: [Movies]
+      summary: Get a movie by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      responses:
+        '200':
+          description: Movie details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    patch:
+      tags: [Movies]
+      summary: Update a movie (admin/internal)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieUpdateInput'
+      responses:
+        '200':
+          description: Updated movie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    delete:
+      tags: [Movies]
+      summary: Delete a movie (admin/internal)
+      description: Deleting may be restricted if referenced by watchlist items or recommendations. :contentReference[oaicite:3]{index=3}
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete due to existing references.
+
+  /genres:
+    get:
+      tags: [Genres]
+      summary: List all genres
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of genres.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Genre'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Genres]
+      summary: Create a new genre (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenreCreateInput'
+      responses:
+        '201':
+          description: Genre created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Genre'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /genres/{genreId}:
+    get:
+      tags: [Genres]
+      summary: Get a genre by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GenreId'
+      responses:
+        '200':
+          description: Genre details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Genre'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Genres]
+      summary: Update a genre (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GenreId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenreUpdateInput'
+      responses:
+        '200':
+          description: Updated genre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Genre'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Genres]
+      summary: Delete a genre (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GenreId'
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /movies/{movieId}/genres:
+    get:
+      tags: [Genres, Movies]
+      summary: List genres for a movie
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      responses:
+        '200':
+          description: Genres associated with the movie.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Genre'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Genres, Movies]
+      summary: Add a genre to a movie (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                genreId:
+                  type: integer
+                  format: int64
+              required: [genreId]
+      responses:
+        '201':
+          description: Genre linked to movie.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Genres, Movies]
+      summary: Remove a genre from a movie (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+        - in: query
+          name: genreId
+          schema:
+            type: integer
+            format: int64
+          required: true
+          description: Genre ID to remove.
+      responses:
+        '204':
+          description: Link removed.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /watchlists:
+    get:
+      tags: [Watchlists]
+      summary: List current user's watchlists
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of watchlists owned by the current user.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Watchlist'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Watchlists]
+      summary: Create a new watchlist
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistCreateInput'
+      responses:
+        '201':
+          description: Watchlist created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watchlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /watchlists/{watchlistId}:
+    get:
+      tags: [Watchlists]
+      summary: Get a watchlist by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+      responses:
+        '200':
+          description: Watchlist details (owned by current user).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watchlist'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Watchlists]
+      summary: Update a watchlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistUpdateInput'
+      responses:
+        '200':
+          description: Updated watchlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Watchlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Watchlists]
+      summary: Delete a watchlist
+      description: Deleting a watchlist will cascade-delete its items.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /watchlists/{watchlistId}/items:
+    get:
+      tags: [Watchlist Items]
+      summary: List items in a watchlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+      responses:
+        '200':
+          description: Items in the watchlist.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WatchlistItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Watchlist Items]
+      summary: Add a movie to a watchlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistItemCreateInput'
+      responses:
+        '201':
+          description: Item added to watchlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchlistItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /watchlists/{watchlistId}/items/{watchlistItemId}:
+    get:
+      tags: [Watchlist Items]
+      summary: Get a watchlist item
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+        - $ref: '#/components/parameters/WatchlistItemId'
+      responses:
+        '200':
+          description: Watchlist item details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchlistItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Watchlist Items]
+      summary: Update a watchlist item
+      description: Used to mark as watched, set user rating, notes, etc.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+        - $ref: '#/components/parameters/WatchlistItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistItemUpdateInput'
+      responses:
+        '200':
+          description: Updated watchlist item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchlistItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Watchlist Items]
+      summary: Remove item from watchlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WatchlistId'
+        - $ref: '#/components/parameters/WatchlistItemId'
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /preferences/genres:
+    get:
+      tags: [Preferences]
+      summary: List current user's genre preferences
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Genre preferences ordered by rank.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserGenrePreference'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Preferences]
+      summary: Add or update a genre preference
+      description: Adds a new preferred genre and rank for the current user.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserGenrePreferenceCreateInput'
+      responses:
+        '201':
+          description: Preference created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserGenrePreference'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /preferences/genres/{userGenrePrefId}:
+    patch:
+      tags: [Preferences]
+      summary: Update a genre preference
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserGenrePrefId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserGenrePreferenceUpdateInput'
+      responses:
+        '200':
+          description: Updated preference.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserGenrePreference'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Preferences]
+      summary: Delete a genre preference
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserGenrePrefId'
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/weekly:
+    get:
+      tags: [Recommendations]
+      summary: Get weekly recommendations for current user
+      description: |
+        Returns weekly recommendations for the authenticated user. Can be
+        filtered by date (week) if desired. 
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: recommendedOn
+          schema:
+            type: string
+            format: date
+          description: Filter by recommendation date (week anchor).
+      responses:
+        '200':
+          description: List of weekly recommendations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WeeklyRecommendation'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [Recommendations]
+      summary: Create a weekly recommendation entry (internal)
+      description: |
+        Primarily used by a background job or admin tool that computes
+        new recommendations.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyRecommendationCreateInput'
+      responses:
+        '201':
+          description: Recommendation created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyRecommendation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /recommendations/weekly/{weeklyRecoId}:
+    patch:
+      tags: [Recommendations]
+      summary: Update weekly recommendation (e.g., mark accepted)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WeeklyRecoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyRecommendationUpdateInput'
+      responses:
+        '200':
+          description: Updated recommendation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyRecommendation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Recommendations]
+      summary: Delete a weekly recommendation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WeeklyRecoId'
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Supabase JWT access token. The backend validates the token and
+        uses the user ID (auth.uid) to scope profile and user-owned data.
+
+  parameters:
+    MovieId:
+      in: path
+      name: movieId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    GenreId:
+      in: path
+      name: genreId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    WatchlistId:
+      in: path
+      name: watchlistId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    WatchlistItemId:
+      in: path
+      name: watchlistItemId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    UserGenrePrefId:
+      in: path
+      name: userGenrePrefId
+      required: true
+      schema:
+        type: integer
+        format: int64
+    WeeklyRecoId:
+      in: path
+      name: weeklyRecoId
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+    BadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnauthorizedError:
+      description: Authentication failed or missing.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          nullable: true
+        preferred_max_rating:
+          type: string
+          nullable: true
+          description: Max age rating to show (e.g. "PG-13").
+        preferred_language:
+          type: string
+          nullable: true
+          description: Preferred movie language (e.g. "en").
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    ProfileUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        preferred_max_rating:
+          type: string
+        preferred_language:
+          type: string
+
+    Movie:
+      type: object
+      properties:
+        movie_id:
+          type: integer
+          format: int64
+          readOnly: true
+        title:
+          type: string
+        release_year:
+          type: integer
+          nullable: true
+        age_rating:
+          type: string
+          nullable: true
+        runtime_minutes:
+          type: integer
+          nullable: true
+        original_language:
+          type: string
+          nullable: true
+        average_viewer_rating:
+          type: number
+          format: double
+          description: Aggregated average (0–100) based on user ratings.
+        poster_url:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [title]
+
+    MovieCreateInput:
+      type: object
+      properties:
+        title:
+          type: string
+        release_year:
+          type: integer
+        age_rating:
+          type: string
+        runtime_minutes:
+          type: integer
+        original_language:
+          type: string
+        poster_url:
+          type: string
+      required: [title]
+
+    MovieUpdateInput:
+      type: object
+      properties:
+        title:
+          type: string
+        release_year:
+          type: integer
+        age_rating:
+          type: string
+        runtime_minutes:
+          type: integer
+        original_language:
+          type: string
+        poster_url:
+          type: string
+
+    Genre:
+      type: object
+      properties:
+        genre_id:
+          type: integer
+          format: int64
+          readOnly: true
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [name]
+
+    GenreCreateInput:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+
+    GenreUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+
+    Watchlist:
+      type: object
+      properties:
+        watchlist_id:
+          type: integer
+          format: int64
+          readOnly: true
+        user_id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [name]
+
+    WatchlistCreateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required: [name]
+
+    WatchlistUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    WatchlistItem:
+      type: object
+      properties:
+        watchlist_item_id:
+          type: integer
+          format: int64
+          readOnly: true
+        watchlist_id:
+          type: integer
+          format: int64
+        movie_id:
+          type: integer
+          format: int64
+        is_watched:
+          type: boolean
+          default: false
+        user_rating:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+        viewing_context:
+          type: string
+          nullable: true
+          description: e.g. "Home", "Theater", "Family".
+        notes:
+          type: string
+          nullable: true
+        added_at:
+          type: string
+          format: date-time
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [watchlist_id, movie_id]
+
+    WatchlistItemCreateInput:
+      type: object
+      properties:
+        movie_id:
+          type: integer
+          format: int64
+        is_watched:
+          type: boolean
+        user_rating:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+        viewing_context:
+          type: string
+        notes:
+          type: string
+      required: [movie_id]
+
+    WatchlistItemUpdateInput:
+      type: object
+      properties:
+        is_watched:
+          type: boolean
+        user_rating:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+        viewing_context:
+          type: string
+        notes:
+          type: string
+
+    UserGenrePreference:
+      type: object
+      properties:
+        user_genre_pref_id:
+          type: integer
+          format: int64
+          readOnly: true
+        user_id:
+          type: string
+          format: uuid
+          readOnly: true
+        genre_id:
+          type: integer
+          format: int64
+        rank:
+          type: integer
+          description: Lower = more preferred.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [genre_id, rank]
+
+    UserGenrePreferenceCreateInput:
+      type: object
+      properties:
+        genre_id:
+          type: integer
+          format: int64
+        rank:
+          type: integer
+      required: [genre_id, rank]
+
+    UserGenrePreferenceUpdateInput:
+      type: object
+      properties:
+        rank:
+          type: integer
+
+    WeeklyRecommendation:
+      type: object
+      properties:
+        weekly_reco_id:
+          type: integer
+          format: int64
+          readOnly: true
+        user_id:
+          type: string
+          format: uuid
+          readOnly: true
+        movie_id:
+          type: integer
+          format: int64
+        recommended_on:
+          type: string
+          format: date
+        accepted:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required: [movie_id, recommended_on]
+
+    WeeklyRecommendationCreateInput:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        movie_id:
+          type: integer
+          format: int64
+        recommended_on:
+          type: string
+          format: date
+        accepted:
+          type: boolean
+      required: [user_id, movie_id]
+
+    WeeklyRecommendationUpdateInput:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+        recommended_on:
+          type: string
+          format: date
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: bad_request
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+
