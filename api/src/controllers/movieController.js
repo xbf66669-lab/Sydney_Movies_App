@@ -3,6 +3,10 @@
 const supabase = require('../config/supabase');
 const { BadRequestError, NotFoundError } = require('../utils/errors');
 
+/**
+ * GET /movies
+ * List & search movies with filters + pagination.
+ */
 const getMovies = async (req, res, next) => {
   try {
     const {
@@ -26,11 +30,6 @@ const getMovies = async (req, res, next) => {
     if (q) {
       query = query.ilike('title', `%${q}%`);
     }
-
-    // genreId would require joining movie_genres; skipping for now
-    // if (genreId) {
-    //   query = query.contains('genre_ids', [parseInt(genreId, 10)]);
-    // }
 
     if (ageRating) {
       query = query.eq('age_rating', ageRating);
@@ -71,7 +70,154 @@ const getMovies = async (req, res, next) => {
   }
 };
 
-// For now, only export the handler that actually exists.
+/**
+ * GET /movies/:movieId
+ * Get details for a single movie by ID.
+ */
+const getMovieById = async (req, res, next) => {
+  try {
+    const movieId = parseInt(req.params.movieId, 10);
+    if (Number.isNaN(movieId)) {
+      throw new BadRequestError('movieId must be a number');
+    }
+
+    const { data: movie, error } = await supabase
+      .from('movies')
+      .select('*')
+      .eq('movie_id', movieId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = "Results contain 0 rows" in PostgREST
+      throw error;
+    }
+
+    if (!movie) {
+      throw new NotFoundError('Movie not found');
+    }
+
+    res.status(200).json(movie);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /movies
+ * Create a new movie.
+ */
+const createMovie = async (req, res, next) => {
+  try {
+    const {
+      title,
+      release_year,
+      age_rating,
+      runtime_minutes,
+      original_language,
+      poster_url,
+    } = req.body;
+
+    if (!title) {
+      throw new BadRequestError('title is required');
+    }
+
+    const { data, error } = await supabase
+      .from('movies')
+      .insert([
+        {
+          title,
+          release_year,
+          age_rating,
+          runtime_minutes,
+          original_language,
+          poster_url,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.status(201).json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /movies/:movieId
+ * Update an existing movie (partial update).
+ */
+const updateMovie = async (req, res, next) => {
+  try {
+    const movieId = parseInt(req.params.movieId, 10);
+    if (Number.isNaN(movieId)) {
+      throw new BadRequestError('movieId must be a number');
+    }
+
+    const updateFields = req.body || {};
+
+    if (Object.keys(updateFields).length === 0) {
+      throw new BadRequestError('No fields provided to update');
+    }
+
+    const { data, error } = await supabase
+      .from('movies')
+      .update(updateFields)
+      .eq('movie_id', movieId)
+      .select()
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    if (!data) {
+      throw new NotFoundError('Movie not found');
+    }
+
+    res.status(200).json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /movies/:movieId
+ * Delete a movie by ID.
+ */
+const deleteMovie = async (req, res, next) => {
+  try {
+    const movieId = parseInt(req.params.movieId, 10);
+    if (Number.isNaN(movieId)) {
+      throw new BadRequestError('movieId must be a number');
+    }
+
+    const { data, error } = await supabase
+      .from('movies')
+      .delete()
+      .eq('movie_id', movieId)
+      .select()
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    if (!data) {
+      throw new NotFoundError('Movie not found');
+    }
+
+    res.status(204).send(); // No content
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getMovies,
+  getMovieById,
+  createMovie,
+  updateMovie,
+  deleteMovie,
 };
