@@ -1,13 +1,15 @@
-// src/App.tsx
+// client/src/App.tsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout/Layout';
 import Home from './pages/Home';
 import Movies from './pages/Movies';
 import Watchlist from './pages/Watchlist';
 import Recommendations from './pages/Recommendations';
-import Profile from './pages/Profile';
+import { Profile } from './pages/Profile';  // Updated import to use named export
 import NotFound from './pages/NotFound';
 import MovieDetails from './pages/MovieDetails';
+import ProfileSettings from './pages/Profile/ProfileSettings';
+import ProfilePreferences from './pages/Profile/ProfilePreferences';
 
 export default function App() {
   return (
@@ -21,7 +23,10 @@ export default function App() {
           </Route>
           <Route path="watchlist" element={<Watchlist />} />
           <Route path="recommendations" element={<Recommendations />} />
-          <Route path="profile" element={<Profile />} />
+          <Route path="profile" element={<Profile />}>
+            <Route path="settings" element={<ProfileSettings />} />
+            <Route path="preferences" element={<ProfilePreferences />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
