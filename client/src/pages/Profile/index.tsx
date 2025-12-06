@@ -1,7 +1,8 @@
 // client/src/pages/Profile/index.tsx
-import { Link, Outlet } from 'react-router-dom';
+import { Outlet, Link } from 'react-router-dom';
 
-export function Profile() {
+// Changed from export function Profile to default export
+export default function Profile() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-6xl mx-auto">
