@@ -1,38 +1,75 @@
 // client/src/App.tsx
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Layout from './components/Layout/Layout';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import Home from './pages/Home';
-import Movies from './pages/Movies';
-import Watchlist from './pages/Watchlist';
-import Recommendations from './pages/Recommendations';
-import Profile from './pages/Profile';  // Changed from { Profile }
-import NotFound from './pages/NotFound';
+import Browse from './pages/Browse';
 import MovieDetails from './pages/MovieDetails';
-import ProfileSettings from './pages/Profile/ProfileSettings';
-import ProfilePreferences from './pages/Profile/ProfilePreferences';
-import { ThemeProvider } from './context/ThemeContext';
+import Watchlist from './pages/Watchlist';
+import Profile from './pages/Profile';
+import Navbar from './components/Navbar';
 
-export default function App() {
+
+function App() {
   return (
-    <ThemeProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Home />} />
-            <Route path="movies">
-              <Route index element={<Movies />} />
-              <Route path=":id" element={<MovieDetails />} />
-            </Route>
-            <Route path="watchlist" element={<Watchlist />} />
-            <Route path="recommendations" element={<Recommendations />} />
-            <Route path="profile" element={<Profile />}>
-              <Route path="settings" element={<ProfileSettings />} />
-              <Route path="preferences" element={<ProfilePreferences />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </ThemeProvider>
+    <AuthProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </AuthProvider>
   );
 }
+
+
+function AppContent() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
+        Loading...
+      </div>
+    );
+  }
+
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      {user && <Navbar />}
+      <main className="pt-16"> {/* Add padding to account for fixed navbar */}
+        <Routes>
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
+          <Route path="/register" element={!user ? <Register /> : <Navigate to="/" replace />} />
+         
+          <Route
+            path="/"
+            element={user ? <Home /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/browse"
+            element={user ? <Browse /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/movies/:id"
+            element={user ? <MovieDetails /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/watchlist"
+            element={user ? <Watchlist /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/profile"
+            element={user ? <Profile /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+
+export default App;
+
