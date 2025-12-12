@@ -33,9 +33,8 @@ export default function Watchlist() {
   const [loadingMovies, setLoadingMovies] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [deleteMode, setDeleteMode] = useState(false);
-  const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
@@ -192,75 +191,9 @@ export default function Watchlist() {
     }
   };
 
-  const toggleSelectForDelete = (watchlistId: number) => {
-    setSelectedForDelete(prev =>
-      prev.includes(watchlistId)
-        ? prev.filter(id => id !== watchlistId)
-        : [...prev, watchlistId]
-    );
-  };
-
-  const handleDeleteButtonClick = async (fromSingle?: boolean) => {
+  const handleDeleteButtonClick = async () => {
     if (!user) return;
-
-    // First click: enter delete mode
-    if (!deleteMode && !fromSingle) {
-      setDeleteMode(true);
-      setSelectedForDelete([]);
-      return;
-    }
-
-    // In delete mode: perform deletion of selected lists
-    if (selectedForDelete.length === 0) {
-      setDeleteMode(false);
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Delete ${selectedForDelete.length} selected watchlist(s) and all their movies?`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const ids = [...selectedForDelete];
-
-      const { error: itemsError } = await supabase
-        .from('watchlist_items')
-        .delete()
-        .in('watchlist_id', ids);
-      if (itemsError) throw itemsError;
-
-      const { error: listError } = await supabase
-        .from('watchlists')
-        .delete()
-        .in('watchlist_id', ids);
-      if (listError) throw listError;
-
-      // Reload watchlists from Supabase to ensure state is correct
-      const { data, error: reloadError } = await supabase
-        .from('watchlists')
-        .select('watchlist_id, name, description, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (reloadError) throw reloadError;
-
-      setWatchlists(data || []);
-
-      if (data && data.length > 0) {
-        setSelectedWatchlist(data[0]);
-        await fetchMoviesForWatchlist(data[0]);
-      } else {
-        setSelectedWatchlist(null);
-        setMovies([]);
-      }
-    } catch (err) {
-      console.error('Error deleting selected watchlists:', err);
-    } finally {
-      setDeleteMode(false);
-      setSelectedForDelete([]);
-    }
+    setIsDeleteModalOpen(true);
   };
 
   if (!user) {
@@ -297,14 +230,10 @@ export default function Watchlist() {
 
           <button
             type="button"
-            onClick={() => handleDeleteButtonClick()}
-            className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-              deleteMode
-                ? 'border-red-500 text-red-600 bg-red-50 hover:bg-red-100'
-                : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-100'
-            }`}
+            onClick={handleDeleteButtonClick}
+            className="px-4 py-2 rounded-md text-sm font-medium border border-red-500 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
           >
-            {deleteMode ? 'Delete Selected' : 'Delete Watchlists'}
+            Delete Watchlists
           </button>
         </div>
       </div>
@@ -328,42 +257,24 @@ export default function Watchlist() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {watchlists.map(list => (
-                <div
+                <button
                   key={list.watchlist_id}
-                  className={`rounded-lg border shadow-sm p-4 bg-white flex flex-col justify-between hover:shadow-md transition-shadow relative ${
+                  type="button"
+                  onClick={() => handleSelectWatchlist(list)}
+                  className={`rounded-lg border shadow-sm p-4 bg-white text-left hover:shadow-md transition-shadow ${
                     selectedWatchlist &&
                     selectedWatchlist.watchlist_id === list.watchlist_id
                       ? 'border-blue-500'
                       : 'border-gray-200'
                   }`}
                 >
-                  {deleteMode && (
-                    <button
-                      type="button"
-                      onClick={() => toggleSelectForDelete(list.watchlist_id)}
-                      className={`absolute top-2 right-2 w-5 h-5 rounded border flex items-center justify-center text-xs ${
-                        selectedForDelete.includes(list.watchlist_id)
-                          ? 'bg-red-500 border-red-500 text-white'
-                          : 'bg-white border-gray-300 text-gray-500'
-                      }`}
-                    >
-                      {selectedForDelete.includes(list.watchlist_id) ? '✓' : ''}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => !deleteMode && handleSelectWatchlist(list)}
-                    className="text-left focus:outline-none"
-                  >
-                    <div className="font-semibold text-lg text-gray-800 truncate">
-                      {list.name || 'Untitled Watchlist'}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Created on{' '}
-                      {new Date(list.created_at).toISOString().split('T')[0]}
-                    </div>
-                  </button>
-                </div>
+                  <div className="font-semibold text-lg text-gray-800 truncate">
+                    {list.name || 'Untitled Watchlist'}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Created on {new Date(list.created_at).toISOString().split('T')[0]}
+                  </div>
+                </button>
               ))}
             </div>
           </div>
@@ -474,6 +385,96 @@ export default function Watchlist() {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {creating ? 'Creating...' : 'Create Watchlist'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-semibold mb-4">Delete Watchlists</h2>
+            {watchlists.length === 0 ? (
+              <div className="text-sm text-gray-600">You have no watchlists to delete.</div>
+            ) : (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {watchlists.map(list => (
+                  <div
+                    key={list.watchlist_id}
+                    className="flex items-center justify-between border rounded-md px-3 py-2"
+                  >
+                    <div className="mr-3">
+                      <div className="font-medium text-sm text-gray-900">
+                        {list.name || 'Untitled Watchlist'}
+                      </div>
+                      {list.description && (
+                        <div className="text-xs text-gray-500 truncate max-w-xs">
+                          {list.description}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user) return;
+                        const confirmed = window.confirm(
+                          `Delete watchlist "${list.name || 'Untitled Watchlist'}" and all its movies?`
+                        );
+                        if (!confirmed) return;
+
+                        try {
+                          const ids = [list.watchlist_id];
+
+                          const { error: itemsError } = await supabase
+                            .from('watchlist_items')
+                            .delete()
+                            .in('watchlist_id', ids);
+                          if (itemsError) throw itemsError;
+
+                          const { error: listError } = await supabase
+                            .from('watchlists')
+                            .delete()
+                            .in('watchlist_id', ids);
+                          if (listError) throw listError;
+
+                          const { data, error: reloadError } = await supabase
+                            .from('watchlists')
+                            .select('watchlist_id, name, description, created_at')
+                            .eq('user_id', user.id)
+                            .order('created_at', { ascending: true });
+
+                          if (reloadError) throw reloadError;
+
+                          setWatchlists(data || []);
+
+                          if (data && data.length > 0) {
+                            setSelectedWatchlist(data[0]);
+                            await fetchMoviesForWatchlist(data[0]);
+                          } else {
+                            setSelectedWatchlist(null);
+                            setMovies([]);
+                          }
+                        } catch (err) {
+                          console.error('Error deleting watchlist from modal:', err);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 rounded-md hover:bg-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Close
               </button>
             </div>
           </div>

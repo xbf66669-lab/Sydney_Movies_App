@@ -17,6 +17,7 @@ type Movie = {
 type WatchlistContextType = {
   watchlist: Movie[];
   addToWatchlist: (movie: Omit<Movie, 'addedDate'>) => Promise<void>;
+  addToMultipleWatchlists: (movie: Omit<Movie, 'addedDate'>, watchlistIds: number[]) => Promise<void>;
   removeFromWatchlist: (movieId: number) => Promise<void>;
   isInWatchlist: (movieId: number) => boolean;
   loading: boolean;
@@ -199,6 +200,70 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const addToMultipleWatchlists = async (
+    movie: Omit<Movie, 'addedDate'>,
+    watchlistIds: number[]
+  ) => {
+    if (!user) throw new Error('User must be logged in to add to watchlists');
+    if (!watchlistIds.length) return;
+
+    try {
+      // Ensure movie exists in movies table once
+      const details = await getMovieDetails(String(movie.id));
+
+      const { error: movieUpsertError } = await supabase
+        .from('movies')
+        .upsert(
+          {
+            movie_id: movie.id,
+            title: details.title,
+            release_year: details.release_date
+              ? new Date(details.release_date).getFullYear()
+              : null,
+            age_rating: details.adult ? 'R' : 'PG-13',
+            runtime_minutes: details.runtime || 0,
+            original_language: details.original_language || 'en',
+            average_viewer_rating: details.vote_average,
+            poster_url: getImageUrl(details.poster_path, 'w500') || null,
+          },
+          { onConflict: 'movie_id' }
+        );
+
+      if (movieUpsertError) throw movieUpsertError;
+
+      // Add relation rows for each selected watchlist
+      const rows = watchlistIds.map(id => ({
+        watchlist_id: id,
+        movie_id: movie.id,
+        is_watched: false,
+        added_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase
+        .from('watchlist_items')
+        .upsert(rows, { onConflict: 'watchlist_id,movie_id' });
+
+      if (error) throw error;
+
+      // Local default watchlist state: if movie already present, do nothing; otherwise append
+      setWatchlist(prev => {
+        const exists = prev.some(m => m.id === movie.id);
+        if (exists) return prev;
+
+        return [
+          ...prev,
+          {
+            ...movie,
+            addedDate: new Date().toISOString().split('T')[0],
+          },
+        ];
+      });
+    } catch (error) {
+      console.error('Error adding to multiple watchlists:', error);
+      throw error;
+    }
+  };
+
   const removeFromWatchlist = async (movieId: number) => {
     if (!user) throw new Error('User must be logged in to remove from watchlist');
 
@@ -243,6 +308,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       value={{
         watchlist,
         addToWatchlist,
+        addToMultipleWatchlists,
         removeFromWatchlist,
         isInWatchlist,
         loading,

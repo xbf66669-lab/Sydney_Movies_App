@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWatchlist } from '../context/WatchlistContext';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+
 import { getMovieDetails, getImageUrl } from '../api/tmdb';
 
 // Error Boundary Component
@@ -45,15 +48,27 @@ export default function MovieDetails() {
   const [movie, setMovie] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const { addToWatchlist, isInWatchlist, removeFromWatchlist, loading: watchlistLoading } = useWatchlist();
+  const {
+    addToWatchlist,
+    addToMultipleWatchlists,
+    isInWatchlist,
+    removeFromWatchlist,
+    loading: watchlistLoading,
+  } = useWatchlist();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const [watchlists, setWatchlists] = useState<Array<{ watchlist_id: number; name: string | null }>>([]);
+  const [watchlistsLoading, setWatchlistsLoading] = useState(false);
+  const [isSelectWatchlistsOpen, setIsSelectWatchlistsOpen] = useState(false);
+  const [selectedWatchlistIds, setSelectedWatchlistIds] = useState<number[]>([]);
 
   useEffect(() => {
     const fetchMovie = async () => {
       try {
         setLoading(true);
         const data = await getMovieDetails(id!);
-        
+
         // Transform the API data to match your expected format
         const formattedMovie = {
           ...data,
@@ -67,14 +82,14 @@ export default function MovieDetails() {
           cast: data.credits?.cast?.slice(0, 4).map((person: any) => ({
             name: person.name,
             character: person.character || 'N/A',
-            profile_path: person.profile_path
+            profile_path: person.profile_path,
           })) || [],
           providers: data['watch/providers']?.results?.US || {},
           runtime: data.runtime || 0,
           release_date: data.release_date || '',
-          overview: data.overview || 'No overview available.'
+          overview: data.overview || 'No overview available.',
         };
-        
+
         setMovie(formattedMovie);
       } catch (err) {
         console.error('Error fetching movie details:', err);
@@ -93,26 +108,82 @@ export default function MovieDetails() {
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   };
 
-  const handleAddToWatchlist = async () => {
-    if (!movie) return;
-    
+  const loadUserWatchlists = async () => {
+    if (!user) return;
+    setWatchlistsLoading(true);
     try {
-      await addToWatchlist({
-        id: movie.id,
-        title: movie.title,
-        year: movie.year,
-        rating: movie.rating,
-        genre: movie.genre,
-        image: movie.image
-      });
+      const { data, error } = await supabase
+        .from('watchlists')
+        .select('watchlist_id, name')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setWatchlists(data || []);
+    } catch (err) {
+      console.error('Error loading user watchlists:', err);
+      setWatchlists([]);
+    } finally {
+      setWatchlistsLoading(false);
+    }
+  };
+
+  const toggleWatchlistSelection = (id: number) => {
+    setSelectedWatchlistIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleOpenSelectWatchlists = async () => {
+    if (!movie || !user) return;
+    await loadUserWatchlists();
+    setSelectedWatchlistIds([]);
+    setIsSelectWatchlistsOpen(true);
+  };
+
+  const handleConfirmAddToWatchlists = async () => {
+    if (!movie) return;
+
+    // If user has no lists yet, fall back to default behavior
+    if (watchlists.length === 0 || selectedWatchlistIds.length === 0) {
+      try {
+        await addToWatchlist({
+          id: movie.id,
+          title: movie.title,
+          year: movie.year,
+          rating: movie.rating,
+          genre: movie.genre,
+          image: movie.image,
+        });
+      } catch (error) {
+        console.error('Error adding to watchlist:', error);
+      } finally {
+        setIsSelectWatchlistsOpen(false);
+      }
+      return;
+    }
+
+    try {
+      await addToMultipleWatchlists(
+        {
+          id: movie.id,
+          title: movie.title,
+          year: movie.year,
+          rating: movie.rating,
+          genre: movie.genre,
+          image: movie.image,
+        },
+        selectedWatchlistIds
+      );
+      setIsSelectWatchlistsOpen(false);
     } catch (error) {
-      console.error('Error adding to watchlist:', error);
+      console.error('Error adding to selected watchlists:', error);
     }
   };
 
   const handleRemoveFromWatchlist = async () => {
     if (!movie) return;
-    
+
     try {
       await removeFromWatchlist(movie.id);
     } catch (error) {
@@ -144,17 +215,17 @@ export default function MovieDetails() {
               onClick={() => navigate(-1)}
               className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              <svg 
-                className="w-5 h-5 mr-1" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24" 
+              <svg
+                className="w-5 h-5 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18" 
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
               Go Back
@@ -175,13 +246,18 @@ export default function MovieDetails() {
               onClick={() => navigate(-1)}
               className="backdrop-blur-md bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-full font-medium transition-all duration-300 flex items-center group"
             >
-              <svg 
-                className="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform duration-300" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform duration-300"
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
               </svg>
               Back to Results
             </button>
@@ -221,15 +297,31 @@ export default function MovieDetails() {
 
                         <div className="flex flex-wrap items-center gap-3">
                           <div className="flex items-center bg-yellow-400/20 text-white text-sm font-semibold px-3 py-1 rounded-full backdrop-blur-sm">
-                            <svg className="w-4 h-4 mr-1.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            <svg
+                              className="w-4 h-4 mr-1.5 text-yellow-400"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
+                              />
                             </svg>
                             <span className="text-white">{movie.rating.toFixed(1)}</span>
                           </div>
 
                           <div className="flex items-center text-gray-300 text-sm">
-                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg
+                              className="w-4 h-4 mr-1.5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
                             </svg>
                             {formatRuntime(movie.runtime)}
                           </div>
@@ -238,7 +330,7 @@ export default function MovieDetails() {
 
                       <div className="flex flex-wrap gap-2">
                         {movie.genre.map((genre: string, index: number) => (
-                          <span 
+                          <span
                             key={index}
                             className="px-3 py-1 bg-white/10 text-white/90 text-xs font-medium rounded-full backdrop-blur-sm hover:bg-white/20 transition-colors"
                           >
@@ -257,16 +349,42 @@ export default function MovieDetails() {
                         >
                           {watchlistLoading ? (
                             <>
-                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              <svg
+                                className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                ></circle>
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                ></path>
                               </svg>
                               Removing...
                             </>
                           ) : (
                             <>
-                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              <svg
+                                className="w-5 h-5 mr-2"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M5 13l4 4L19 7"
+                                />
                               </svg>
                               In Watchlist
                             </>
@@ -274,22 +392,48 @@ export default function MovieDetails() {
                         </button>
                       ) : (
                         <button
-                          onClick={handleAddToWatchlist}
+                          onClick={handleOpenSelectWatchlists}
                           disabled={watchlistLoading}
                           className="flex items-center justify-center px-6 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium shadow-lg hover:shadow-indigo-500/30"
                         >
                           {watchlistLoading ? (
                             <>
-                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              <svg
+                                className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                ></circle>
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                ></path>
                               </svg>
                               Adding...
                             </>
                           ) : (
                             <>
-                              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                              <svg
+                                className="w-5 h-5 mr-2"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M12 4v16m8-8H4"
+                                />
                               </svg>
                               Add to Watchlist
                             </>
@@ -314,8 +458,8 @@ export default function MovieDetails() {
                           <h3 className="text-lg font-semibold text-gray-300 mb-4">Stream</h3>
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {movie.providers.flatrate.map((provider: any) => (
-                              <div 
-                                key={provider.provider_id} 
+                              <div
+                                key={provider.provider_id}
                                 className="flex flex-col items-center p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group"
                               >
                                 <div className="w-16 h-16 bg-white/5 rounded-full p-2 mb-2 flex items-center justify-center backdrop-blur-sm group-hover:bg-white/10 transition-colors">
@@ -324,11 +468,13 @@ export default function MovieDetails() {
                                     alt={provider.provider_name}
                                     className="max-w-full max-h-full object-contain"
                                     onError={(e) => {
-                                      e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHJlY3QgeD0iMyIgeT0iMyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgcnk9IjIiPjwvcmVjdD48Y2lyY2xlIGN4PSI4LjUiIGN5PSI4LjUiIHI9IjIuNSI+PC9jaXJjbGU+PHBhdGggZD0iTTIxIDE1bC01LjUtMy44LTUuNSAzVjkiPjwvcGF0aD48L3N2Zz4=';
+                                      e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHJlY3QgeD0iMyIgeT0iMyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgcnk9IjIiPjwvcmVjdD48Y2lyY2xlIGN4PSI4LjUiIGN5PSI3IiByPSI0Ij48L2NpcmNsZT48L3N2Zz4=';
                                     }}
                                   />
                                 </div>
-                                <span className="text-sm font-medium text-white/90 text-center">{provider.provider_name}</span>
+                                <span className="text-sm font-medium text-white/90 text-center">
+                                  {provider.provider_name}
+                                </span>
                               </div>
                             ))}
                           </div>
@@ -356,17 +502,17 @@ export default function MovieDetails() {
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                  <svg 
-                                    className="w-12 h-12" 
-                                    fill="none" 
-                                    stroke="currentColor" 
+                                  <svg
+                                    className="w-12 h-12"
+                                    fill="none"
+                                    stroke="currentColor"
                                     viewBox="0 0 24 24"
                                   >
-                                    <path 
-                                      strokeLinecap="round" 
-                                      strokeLinejoin="round" 
-                                      strokeWidth={1} 
-                                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" 
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={1}
+                                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                                     />
                                   </svg>
                                 </div>
@@ -389,6 +535,62 @@ export default function MovieDetails() {
           </div>
         </div>
       </div>
+
+      {isSelectWatchlistsOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-semibold mb-4">Add to Watchlist</h2>
+            {!user ? (
+              <div className="text-sm text-gray-700">
+                Please sign in to manage your watchlists.
+              </div>
+            ) : watchlistsLoading ? (
+              <div className="text-sm text-gray-700">Loading your watchlists...</div>
+            ) : watchlists.length === 0 ? (
+              <div className="text-sm text-gray-700">
+                You don't have any watchlists yet. A default watchlist will be created.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {watchlists.map((list) => (
+                  <label
+                    key={list.watchlist_id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-100 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedWatchlistIds.includes(list.watchlist_id)}
+                      onChange={() => toggleWatchlistSelection(list.watchlist_id)}
+                      className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-800">
+                      {list.name || 'Untitled Watchlist'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSelectWatchlistsOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={watchlistLoading}
+                onClick={handleConfirmAddToWatchlists}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {watchlistLoading ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ErrorBoundary>
   );
 }
