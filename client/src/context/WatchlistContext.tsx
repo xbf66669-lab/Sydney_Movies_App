@@ -43,20 +43,26 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     try {
-      // First, get the user's watchlist ID
+      // 1) Get one watchlist row for this user (supports multiple seeded lists)
       const { data: watchlistData, error: watchlistError } = await supabase
         .from('watchlists')
         .select('watchlist_id')
         .eq('user_id', user.id)
-        .single();
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-      if (watchlistError) throw watchlistError;
+      if (watchlistError) {
+        console.error('watchlists select error in fetchWatchlist:', watchlistError);
+        setWatchlist([]);
+        return;
+      }
       if (!watchlistData) {
         setWatchlist([]);
         return;
       }
 
-      // Then get the watchlist items
+      // 2) Get items in that watchlist
       const { data, error } = await supabase
         .from('watchlist_items')
         .select('movie_id, added_at')
@@ -64,6 +70,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
+      // 3) For each movie_id, hydrate from TMDb
       const movies: Movie[] = data
         ? await Promise.all(
             data.map(async (item: any) => {
@@ -73,12 +80,14 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
               return {
                 id: details.id,
                 title: details.title,
-                year: new Date(details.release_date).getFullYear(),
+                year: details.release_date
+                  ? new Date(details.release_date).getFullYear()
+                  : 0,
                 rating: details.vote_average,
                 genre:
-                  details.genres?.map((g: { id: number; name: string }) => g.name) || [],
+                  details.genres?.map((g: { id: number; name: string }) => g.name) ||
+                  [],
                 image: posterUrl || '',
-
                 addedDate: item.added_at
                   ? new Date(item.added_at).toISOString().split('T')[0]
                   : new Date().toISOString().split('T')[0],
@@ -99,16 +108,23 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error('User must be logged in to add to watchlist');
 
     try {
-      // Get or create user's watchlist
+      // 1) Get or create user's watchlist row (choose a single default if multiple exist)
       const { data: watchlistData, error: watchlistError } = await supabase
         .from('watchlists')
         .select('watchlist_id')
         .eq('user_id', user.id)
-        .single();
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
       let watchlistId: number;
 
-      if (watchlistError || !watchlistData) {
+      if (watchlistError) {
+        console.error('watchlists select error in addToWatchlist:', watchlistError);
+        throw watchlistError;
+      }
+
+      if (!watchlistData) {
         const { data: newWatchlist, error: createError } = await supabase
           .from('watchlists')
           .insert([
@@ -126,16 +142,18 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
         watchlistId = watchlistData.watchlist_id;
       }
 
-      // Ensure the movie exists in the movies table to satisfy FK
+      // 2) Ensure the movie exists in movies table (link TMDb → Supabase)
       const details = await getMovieDetails(String(movie.id));
 
       const { error: movieUpsertError } = await supabase
         .from('movies')
         .upsert(
           {
-            movie_id: movie.id,
+            movie_id: movie.id, // TMDb id
             title: details.title,
-            release_year: new Date(details.release_date).getFullYear(),
+            release_year: details.release_date
+              ? new Date(details.release_date).getFullYear()
+              : null,
             age_rating: details.adult ? 'R' : 'PG-13',
             runtime_minutes: details.runtime || 0,
             original_language: details.original_language || 'en',
@@ -147,7 +165,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
       if (movieUpsertError) throw movieUpsertError;
 
-      // Add movie to watchlist (store only relations)
+      // 3) Add relation row in watchlist_items
       const { error } = await supabase
         .from('watchlist_items')
         .upsert(
@@ -162,14 +180,19 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // Update local state
-      setWatchlist(prev => [
-        ...prev,
-        {
-          ...movie,
-          addedDate: new Date().toISOString().split('T')[0],
-        },
-      ]);
+      // 4) Update local state
+      setWatchlist(prev => {
+        const exists = prev.some(m => m.id === movie.id);
+        if (exists) return prev;
+
+        return [
+          ...prev,
+          {
+            ...movie,
+            addedDate: new Date().toISOString().split('T')[0],
+          },
+        ];
+      });
     } catch (error) {
       console.error('Error adding to watchlist:', error);
       throw error;
@@ -180,19 +203,21 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error('User must be logged in to remove from watchlist');
 
     try {
-      // First get the watchlist ID
+      // 1) Get user's watchlist id
       const { data: watchlistData, error: watchlistError } = await supabase
         .from('watchlists')
         .select('watchlist_id')
         .eq('user_id', user.id)
-        .single();
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
       if (watchlistError || !watchlistData) {
-        console.error('No watchlist found for user');
+        console.error('watchlists select error in removeFromWatchlist:', watchlistError);
         return;
       }
 
-      // Then delete the item
+      // 2) Delete from watchlist_items
       const { error } = await supabase
         .from('watchlist_items')
         .delete()
@@ -201,7 +226,7 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // Update local state
+      // 3) Update local state
       setWatchlist(prev => prev.filter(movie => movie.id !== movieId));
     } catch (error) {
       console.error('Error removing from watchlist:', error);
@@ -214,13 +239,13 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <WatchlistContext.Provider 
-      value={{ 
-        watchlist, 
-        addToWatchlist, 
-        removeFromWatchlist, 
+    <WatchlistContext.Provider
+      value={{
+        watchlist,
+        addToWatchlist,
+        removeFromWatchlist,
         isInWatchlist,
-        loading
+        loading,
       }}
     >
       {children}
