@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getPopularMovies } from '../api/tmdb';
+import { getPopularMoviesPaged } from '../api/tmdb';
 import { Link } from 'react-router-dom';
 
 interface Movie {
@@ -13,13 +13,49 @@ interface Movie {
 export default function Browse() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
+
+  const hasMore = totalPages === null || currentPage < totalPages;
+
+  const loadMoreMovies = async () => {
+    if (!hasMore || loadingMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const data = await getPopularMoviesPaged(currentPage + 1);
+      const newMovies = data.results || [];
+      
+      setMovies(prev => {
+        // Filter out any duplicates
+        const existingIds = new Set(prev.map(movie => movie.id));
+        const uniqueNewMovies = newMovies.filter(movie => !existingIds.has(movie.id));
+        return [...prev, ...uniqueNewMovies];
+      });
+      
+      setCurrentPage(prev => prev + 1);
+      if (typeof data.total_pages === 'number') {
+        setTotalPages(data.total_pages);
+      }
+    } catch (err) {
+      setError('Failed to load more movies');
+      console.error(err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchMovies = async () => {
+    const fetchInitialMovies = async () => {
+      setLoading(true);
       try {
-        const data = await getPopularMovies();
-        setMovies(data);
+        const data = await getPopularMoviesPaged(1);
+        setMovies(data.results || []);
+        if (typeof data.total_pages === 'number') {
+          setTotalPages(data.total_pages);
+        }
       } catch (err) {
         setError('Failed to fetch movies');
         console.error(err);
@@ -28,11 +64,16 @@ export default function Browse() {
       }
     };
 
-    fetchMovies();
+    fetchInitialMovies();
   }, []);
 
-  if (loading) return <div className="text-center py-8 text-gray-300">Loading movies...</div>;
-  if (error) return <div className="text-center py-8 text-red-400">{error}</div>;
+  if (loading && movies.length === 0) {
+    return <div className="text-center py-8 text-gray-300">Loading movies...</div>;
+  }
+
+  if (error) {
+    return <div className="text-center py-8 text-red-400">{error}</div>;
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -71,6 +112,28 @@ export default function Browse() {
           </Link>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="mt-8 text-center">
+          <button
+            onClick={loadMoreMovies}
+            disabled={loadingMore}
+            className={`px-6 py-3 rounded-lg font-medium ${
+              loadingMore
+                ? 'bg-gray-600 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700'
+            } text-white transition-colors`}
+          >
+            {loadingMore ? 'Loading...' : 'More Movies'}
+          </button>
+        </div>
+      )}
+
+      {!hasMore && movies.length > 0 && (
+        <div className="mt-8 text-center text-gray-400">
+          No more movies to show
+        </div>
+      )}
     </div>
   );
 }
