@@ -17,7 +17,7 @@ type Movie = {
   year: number;
   rating: number;
   genre: string[];
-  image: string;
+  image: string | null;
   addedDate: string;
 };
 
@@ -33,6 +33,10 @@ export default function Watchlist() {
   const [loadingMovies, setLoadingMovies] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<number[]>([]);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newDescription, setNewDescription] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -87,30 +91,40 @@ export default function Watchlist() {
       if (error) throw error;
 
       const hydrated: Movie[] = data
-        ? await Promise.all(
-            data.map(async (item: any) => {
-              const details = await getMovieDetails(String(item.movie_id));
-              const posterUrl = details ? getImageUrl(details.poster_path, 'w500') : null;
+        ? (
+            await Promise.all(
+              data.map(async (item: any) => {
+                try {
+                  const details = await getMovieDetails(String(item.movie_id));
+                  if (!details) return null;
 
-              return {
-                id: details.id,
-                title: details.title,
-                year: details.release_date
-                  ? new Date(details.release_date).getFullYear()
-                  : 0,
-                rating: details.vote_average,
-                genre:
-                  details.genres?.map((g: { id: number; name: string }) => g.name) ||
-                  [],
-                image: posterUrl || '',
-                addedDate: item.added_at
-                  ? new Date(item.added_at).toISOString().split('T')[0]
-                  : new Date().toISOString().split('T')[0],
-              };
-            })
-          )
+                  const posterUrl = details
+                    ? getImageUrl(details.poster_path, 'w500')
+                    : null;
+
+                  return {
+                    id: details.id,
+                    title: details.title,
+                    year: details.release_date
+                      ? new Date(details.release_date).getFullYear()
+                      : 0,
+                    rating: details.vote_average,
+                    genre:
+                      details.genres?.map((g: { id: number; name: string }) => g.name) ||
+                      [],
+                    image: posterUrl || null,
+                    addedDate: item.added_at
+                      ? new Date(item.added_at).toISOString().split('T')[0]
+                      : new Date().toISOString().split('T')[0],
+                  } as Movie;
+                } catch (err) {
+                  console.error('Error hydrating movie from TMDb:', err);
+                  return null;
+                }
+              })
+            )
+          ).filter((m): m is Movie => m !== null)
         : [];
-
       setMovies(hydrated);
     } catch (err) {
       console.error('Error fetching movies for watchlist:', err);
@@ -125,21 +139,23 @@ export default function Watchlist() {
     await fetchMoviesForWatchlist(watchlist);
   };
 
-  const handleCreateWatchlist = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateWatchlist = async () => {
     if (!user) return;
     const name = newName.trim() || 'My Watchlist';
 
     try {
       setCreating(true);
+
       const { data, error } = await supabase
         .from('watchlists')
         .insert([
           {
             user_id: user.id,
             name,
+            description: newDescription.trim() || null,
           },
         ])
+
         .select('watchlist_id, name, description, created_at')
         .single();
 
@@ -148,6 +164,8 @@ export default function Watchlist() {
       const created = data as WatchlistRow;
       setWatchlists(prev => [...prev, created]);
       setNewName('');
+      setNewDescription('');
+      setIsCreateModalOpen(false);
       await handleSelectWatchlist(created);
     } catch (err) {
       console.error('Error creating watchlist:', err);
@@ -174,6 +192,77 @@ export default function Watchlist() {
     }
   };
 
+  const toggleSelectForDelete = (watchlistId: number) => {
+    setSelectedForDelete(prev =>
+      prev.includes(watchlistId)
+        ? prev.filter(id => id !== watchlistId)
+        : [...prev, watchlistId]
+    );
+  };
+
+  const handleDeleteButtonClick = async (fromSingle?: boolean) => {
+    if (!user) return;
+
+    // First click: enter delete mode
+    if (!deleteMode && !fromSingle) {
+      setDeleteMode(true);
+      setSelectedForDelete([]);
+      return;
+    }
+
+    // In delete mode: perform deletion of selected lists
+    if (selectedForDelete.length === 0) {
+      setDeleteMode(false);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${selectedForDelete.length} selected watchlist(s) and all their movies?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const ids = [...selectedForDelete];
+
+      const { error: itemsError } = await supabase
+        .from('watchlist_items')
+        .delete()
+        .in('watchlist_id', ids);
+      if (itemsError) throw itemsError;
+
+      const { error: listError } = await supabase
+        .from('watchlists')
+        .delete()
+        .in('watchlist_id', ids);
+      if (listError) throw listError;
+
+      // Reload watchlists from Supabase to ensure state is correct
+      const { data, error: reloadError } = await supabase
+        .from('watchlists')
+        .select('watchlist_id, name, description, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (reloadError) throw reloadError;
+
+      setWatchlists(data || []);
+
+      if (data && data.length > 0) {
+        setSelectedWatchlist(data[0]);
+        await fetchMoviesForWatchlist(data[0]);
+      } else {
+        setSelectedWatchlist(null);
+        setMovies([]);
+      }
+    } catch (err) {
+      console.error('Error deleting selected watchlists:', err);
+    } finally {
+      setDeleteMode(false);
+      setSelectedForDelete([]);
+    }
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -197,22 +286,27 @@ export default function Watchlist() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
         <h1 className="text-3xl font-bold">Your Watchlists</h1>
 
-        <form onSubmit={handleCreateWatchlist} className="flex items-center gap-2">
-          <input
-            type="text"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            placeholder="Create new watchlist"
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
-          />
+        <div className="flex items-center gap-2">
           <button
-            type="submit"
-            disabled={creating}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            type="button"
+            onClick={() => setIsCreateModalOpen(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
           >
-            {creating ? 'Creating...' : 'Add Watchlist'}
+            Create New Watchlist
           </button>
-        </form>
+
+          <button
+            type="button"
+            onClick={() => handleDeleteButtonClick()}
+            className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+              deleteMode
+                ? 'border-red-500 text-red-600 bg-red-50 hover:bg-red-100'
+                : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-100'
+            }`}
+          >
+            {deleteMode ? 'Delete Selected' : 'Delete Watchlists'}
+          </button>
+        </div>
       </div>
 
       {watchlists.length === 0 ? (
@@ -234,25 +328,42 @@ export default function Watchlist() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {watchlists.map(list => (
-                <button
+                <div
                   key={list.watchlist_id}
-                  type="button"
-                  onClick={() => handleSelectWatchlist(list)}
-                  className={`text-left rounded-lg border shadow-sm p-4 bg-white hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`rounded-lg border shadow-sm p-4 bg-white flex flex-col justify-between hover:shadow-md transition-shadow relative ${
                     selectedWatchlist &&
                     selectedWatchlist.watchlist_id === list.watchlist_id
                       ? 'border-blue-500'
                       : 'border-gray-200'
                   }`}
                 >
-                  <div className="font-semibold text-lg text-gray-800 truncate">
-                    {list.name || 'Untitled Watchlist'}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Created on{' '}
-                    {new Date(list.created_at).toISOString().split('T')[0]}
-                  </div>
-                </button>
+                  {deleteMode && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectForDelete(list.watchlist_id)}
+                      className={`absolute top-2 right-2 w-5 h-5 rounded border flex items-center justify-center text-xs ${
+                        selectedForDelete.includes(list.watchlist_id)
+                          ? 'bg-red-500 border-red-500 text-white'
+                          : 'bg-white border-gray-300 text-gray-500'
+                      }`}
+                    >
+                      {selectedForDelete.includes(list.watchlist_id) ? '✓' : ''}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => !deleteMode && handleSelectWatchlist(list)}
+                    className="text-left focus:outline-none"
+                  >
+                    <div className="font-semibold text-lg text-gray-800 truncate">
+                      {list.name || 'Untitled Watchlist'}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Created on{' '}
+                      {new Date(list.created_at).toISOString().split('T')[0]}
+                    </div>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -282,11 +393,13 @@ export default function Watchlist() {
                       key={movie.id}
                       className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col"
                     >
-                      <img
-                        src={movie.image}
-                        alt={movie.title}
-                        className="w-full h-64 object-cover"
-                      />
+                      {movie.image && (
+                        <img
+                          src={movie.image}
+                          alt={movie.title}
+                          className="w-full h-64 object-cover"
+                        />
+                      )}
                       <div className="p-4 flex-1 flex flex-col">
                         <h3 className="text-lg font-semibold mb-1">{movie.title}</h3>
                         <p className="text-gray-600 text-sm mb-1">{movie.year}</p>
@@ -309,6 +422,62 @@ export default function Watchlist() {
             </div>
           )}
         </>
+      )}
+
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-semibold mb-4">Create New Watchlist</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Watchlist Name
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="e.g. Family Night"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={newDescription}
+                  onChange={e => setNewDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                  rows={3}
+                  placeholder="Optional description for this watchlist"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreateModalOpen(false);
+                  setNewName('');
+                  setNewDescription('');
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={creating}
+                onClick={handleCreateWatchlist}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {creating ? 'Creating...' : 'Create Watchlist'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
