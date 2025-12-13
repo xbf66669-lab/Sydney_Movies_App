@@ -82,6 +82,7 @@ export default function MovieDetails() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSavedMessage, setNoteSavedMessage] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
+  const [noteWarning, setNoteWarning] = useState<string | null>(null);
   const {
     addToWatchlist,
     addToMultipleWatchlists,
@@ -127,6 +128,7 @@ export default function MovieDetails() {
 
   const loadNote = async (userId: string, movieId: number) => {
     setNoteError(null);
+    setNoteWarning(null);
     try {
       const { data, error: noteErr } = await supabase
         .from('notes')
@@ -142,6 +144,7 @@ export default function MovieDetails() {
         return;
       }
     } catch (_e) {
+      setNoteWarning('Cloud sync unavailable — showing device-local note.');
       // Fallback when table doesn't exist / RLS blocks / etc.
       // keep going to localStorage
     }
@@ -173,6 +176,7 @@ export default function MovieDetails() {
     setNoteSaving(true);
     setNoteSavedMessage(null);
     setNoteError(null);
+    setNoteWarning(null);
 
     const body = noteDraft;
     const updated_at = new Date().toISOString();
@@ -210,7 +214,8 @@ export default function MovieDetails() {
           getNoteStorageKey(user.id, movie.id),
           JSON.stringify({ body, updated_at })
         );
-        setNoteSavedMessage('Saved.');
+        setNoteWarning('Saved locally only — not synced across devices.');
+        setNoteSavedMessage('Saved locally.');
         setTimeout(() => setNoteSavedMessage(null), 1500);
       } catch {
         setNoteError('Failed to save note.');
@@ -557,24 +562,24 @@ export default function MovieDetails() {
                       <button
                         type="button"
                         onClick={saveNote}
-                        disabled={noteSaving || !user}
-                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium"
+                        disabled={noteSaving}
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium"
                       >
                         {noteSaving ? 'Saving…' : 'Save'}
                       </button>
                     </div>
+                    {noteWarning && <div className="mb-3 text-sm text-amber-300">{noteWarning}</div>}
                     {noteError && <div className="mb-3 text-sm text-red-400">{noteError}</div>}
                     {noteSavedMessage && <div className="mb-3 text-sm text-green-400">{noteSavedMessage}</div>}
                     {!user ? (
                       <div className="text-sm text-gray-300">Sign in to save notes to your profile.</div>
-                    ) : (
-                      <textarea
-                        value={noteDraft}
-                        onChange={(e) => setNoteDraft(e.target.value)}
-                        className="w-full min-h-[140px] px-4 py-3 rounded-xl bg-gray-900/50 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Write anything you want about this movie…"
-                      />
-                    )}
+                    ) : null}
+                    <textarea
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      className="w-full min-h-[140px] px-4 py-3 rounded-xl bg-gray-900/50 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Write anything you want about this movie…"
+                    />
                   </div>
 
                   {/* Where to Watch */}

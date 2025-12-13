@@ -129,6 +129,7 @@ export default function ProfileComments() {
           .filter((n) => n.body.trim().length > 0);
       } catch {
         remoteNotes = [];
+        setError('Cloud sync unavailable — showing device-local comments only.');
       }
 
       // Merge local + remote (prefer the most recently updated per movie)
@@ -202,53 +203,55 @@ export default function ProfileComments() {
 
       {loading ? (
         <div className="text-sm text-gray-600">Loading…</div>
-      ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
-      ) : items.length === 0 ? (
-        <div className="text-sm text-gray-600">No saved comments yet. Add a note on any movie details page.</div>
       ) : (
-        <div className="space-y-4">
-          {items.map((it) => {
-            const title = it.movie?.title || `Movie #${it.movieId}`;
-            const poster = it.movie?.image || getPosterFallbackDataUrl(title);
-            const year = it.movie?.year || 0;
-            const rating = it.movie?.rating || 0;
+        <>
+          {error && <div className="mb-3 text-sm text-amber-700">{error}</div>}
 
-            return (
-              <Link
-                key={`note-${it.movieId}`}
-                to={`/movies/${it.movieId}`}
-                className="block bg-white rounded-xl shadow hover:shadow-md transition-shadow overflow-hidden"
-              >
-                <div className="flex gap-4 p-4">
-                  <div className="w-20 h-28 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
-                    <img
-                      src={poster}
-                      alt={title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = getPosterFallbackDataUrl(title);
-                      }}
-                    />
-                  </div>
+          {items.length === 0 ? (
+            <div className="text-sm text-gray-600">No saved comments yet. Add a note on any movie details page.</div>
+          ) : (
+            <div className="space-y-4">
+              {items.map((it) => {
+                const title = it.movie?.title || `Movie #${it.movieId}`;
+                const poster = it.movie?.image || getPosterFallbackDataUrl(title);
+                const year = it.movie?.year || 0;
+                const rating = it.movie?.rating || 0;
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold text-gray-900 truncate">{title}</div>
-                        <div className="text-xs text-gray-600 mt-0.5">
-                          {year ? `${year}` : '—'}
-                          <span className="mx-2">•</span>
-                          {rating ? `Rating ${rating.toFixed(1)}` : 'Rating —'}
-                          {it.updated_at ? (
-                            <>
-                              <span className="mx-2">•</span>
-                              {new Date(it.updated_at).toLocaleString()}
-                            </>
-                          ) : null}
-                        </div>
+                return (
+                  <Link
+                    key={`note-${it.movieId}`}
+                    to={`/movies/${it.movieId}`}
+                    className="block bg-white rounded-xl shadow hover:shadow-md transition-shadow overflow-hidden"
+                  >
+                    <div className="flex gap-4 p-4">
+                      <div className="w-20 h-28 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                        <img
+                          src={poster}
+                          alt={title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = getPosterFallbackDataUrl(title);
+                          }}
+                        />
                       </div>
-                    </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-gray-900 truncate">{title}</div>
+                            <div className="text-xs text-gray-600 mt-0.5">
+                              {year ? `${year}` : '—'}
+                              <span className="mx-2">•</span>
+                              {rating ? `Rating ${rating.toFixed(1)}` : 'Rating —'}
+                              {it.updated_at ? (
+                                <>
+                                  <span className="mx-2">•</span>
+                                  {new Date(it.updated_at).toLocaleString()}
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
 
                     <div className="mt-2 text-sm text-gray-800 line-clamp-3 whitespace-pre-wrap">
                       {it.body}
@@ -258,7 +261,9 @@ export default function ProfileComments() {
               </Link>
             );
           })}
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
