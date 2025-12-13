@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest --detectOpenHandles",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "offline": "serverless offline",
+    "deploy": "serverless deploy"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.950.0",

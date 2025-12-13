@@ -1,0 +1,56 @@
+service: sydney-movies-api
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-2
+  memorySize: 512
+  timeout: 30
+  httpApi:
+    cors:
+      allowedOrigins:
+        - https://main.d12p5zr8qcw2kd.amplifyapp.com
+        - http://localhost:5173
+      allowedHeaders:
+        - Accept
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - OPTIONS
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+      allowCredentials: true
+  environment:
+    SECRETS_ID: Sydney_Movies_App/api/prod
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - arn:aws:secretsmanager:${aws:region}:${aws:accountId}:secret:Sydney_Movies_App/api/prod-*
+
+functions:
+  api:
+    handler: src/lambda.handler
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+
+package:
+  patterns:
+    - ../docs/sydney-movies-app-openapi.yaml
+    - src/**
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3000
