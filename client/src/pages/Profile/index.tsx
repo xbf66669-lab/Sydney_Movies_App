@@ -1,5 +1,5 @@
 // client/src/pages/Profile/index.tsx
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom';
 
 // Changed from export function Profile to default export
 export default function Profile() {
@@ -12,9 +12,9 @@ export default function Profile() {
           <div className="w-full md:w-64 flex-shrink-0">
             <div className="bg-white p-4 rounded-lg shadow">
               <nav className="space-y-2">
-                <Link 
+                <NavLink 
                   to="/profile/settings" 
-                  className={({ isActive }) => 
+                  className={({ isActive }: { isActive: boolean }) => 
                     `block px-4 py-2 rounded transition-colors ${
                       isActive 
                         ? 'bg-blue-50 text-blue-700 font-medium' 
@@ -23,10 +23,10 @@ export default function Profile() {
                   }
                 >
                   Account Settings
-                </Link>
-                <Link 
+                </NavLink>
+                <NavLink 
                   to="/profile/preferences" 
-                  className={({ isActive }) => 
+                  className={({ isActive }: { isActive: boolean }) => 
                     `block px-4 py-2 rounded transition-colors ${
                       isActive 
                         ? 'bg-blue-50 text-blue-700 font-medium' 
@@ -35,7 +35,7 @@ export default function Profile() {
                   }
                 >
                   Preferences
-                </Link>
+                </NavLink>
               </nav>
             </div>
           </div>

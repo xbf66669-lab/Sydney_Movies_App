@@ -6,13 +6,23 @@ type MovieListProps = {
   searchQuery: string;
 };
 
+type Movie = {
+  id: number;
+  title: string;
+  poster_path?: string | null;
+  poster_url?: string;
+  vote_average?: number;
+  release_date?: string;
+  overview?: string;
+};
+
 export function MovieList({ searchQuery }: MovieListProps) {
   // This is a placeholder - you'll want to replace this with actual data fetching
-  const { data: movies = [], isLoading } = useQuery({
+  const { data: movies = [], isLoading } = useQuery<Movie[]>({
     queryKey: ['movies', searchQuery],
     queryFn: async () => {
       // This will be replaced with actual API call
-      return [];
+      return [] as Movie[];
     },
   });
 

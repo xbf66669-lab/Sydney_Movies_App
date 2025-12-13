@@ -1,5 +1,6 @@
 // client/src/context/WatchlistContext.tsx
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 import { getMovieDetails, getImageUrl } from '../api/tmdb';

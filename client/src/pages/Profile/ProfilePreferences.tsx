@@ -1,5 +1,6 @@
 // client/src/pages/Profile/ProfilePreferences.tsx
 import { useState, useEffect } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function ProfilePreferences() {
@@ -15,10 +16,10 @@ export default function ProfilePreferences() {
     setPreferences(prev => ({ ...prev, theme }));
   }, [theme]);
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    const checked = e.target.checked;
-    
+    const checked = 'checked' in e.target ? e.target.checked : false;
+
     setPreferences(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
@@ -26,11 +27,13 @@ export default function ProfilePreferences() {
 
     // Update theme immediately when changed
     if (name === 'theme') {
-      setTheme(value);
+      if (value === 'light' || value === 'dark' || value === 'system') {
+        setTheme(value);
+      }
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     // TODO: Save preferences to Supabase
     console.log('Saving preferences:', preferences);
