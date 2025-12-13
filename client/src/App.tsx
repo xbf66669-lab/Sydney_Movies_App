@@ -45,7 +45,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gray-900 text-white flex">
       {user && <Sidebar />}
-      <main className="flex-1 ml-0 md:ml-64 pt-14 md:pt-0">
+      <main className={`flex-1 ml-0 ${user ? 'md:ml-64 pt-14 md:pt-0' : ''}`}>
         <Routes>
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/dashboard" replace />} />
