@@ -137,30 +137,34 @@ export default function MovieDetails() {
 
       if (noteErr) throw noteErr;
       const body = (data as any)?.body;
-      setNoteDraft(typeof body === 'string' ? body : '');
-      return;
+      if (typeof body === 'string' && body.trim().length > 0) {
+        setNoteDraft(body);
+        return;
+      }
     } catch (_e) {
       // Fallback when table doesn't exist / RLS blocks / etc.
-      try {
-        const raw = localStorage.getItem(getNoteStorageKey(userId, movieId));
-        if (typeof raw !== 'string' || !raw) {
-          setNoteDraft('');
-          return;
-        }
+      // keep going to localStorage
+    }
 
-        // Backward compat:
-        // - older builds stored just the note body as a string
-        // - newer builds store JSON: { body, updated_at }
-        try {
-          const parsed = JSON.parse(raw);
-          const body = (parsed as any)?.body;
-          setNoteDraft(typeof body === 'string' ? body : '');
-        } catch {
-          setNoteDraft(raw);
-        }
-      } catch {
+    try {
+      const raw = localStorage.getItem(getNoteStorageKey(userId, movieId));
+      if (typeof raw !== 'string' || !raw) {
         setNoteDraft('');
+        return;
       }
+
+      // Backward compat:
+      // - older builds stored just the note body as a string
+      // - newer builds store JSON: { body, updated_at }
+      try {
+        const parsed = JSON.parse(raw);
+        const body = (parsed as any)?.body;
+        setNoteDraft(typeof body === 'string' ? body : '');
+      } catch {
+        setNoteDraft(raw);
+      }
+    } catch {
+      setNoteDraft('');
     }
   };
 
@@ -171,8 +175,8 @@ export default function MovieDetails() {
     setNoteError(null);
 
     const body = noteDraft;
+    const updated_at = new Date().toISOString();
     try {
-      const updated_at = new Date().toISOString();
       const { error: upsertErr } = await supabase
         .from('notes')
         .upsert(
@@ -186,6 +190,17 @@ export default function MovieDetails() {
         );
 
       if (upsertErr) throw upsertErr;
+
+      // Always keep a local copy so notes persist even if reads come from localStorage.
+      try {
+        localStorage.setItem(
+          getNoteStorageKey(user.id, movie.id),
+          JSON.stringify({ body, updated_at })
+        );
+      } catch {
+        // ignore localStorage failures
+      }
+
       setNoteSavedMessage('Saved.');
       setTimeout(() => setNoteSavedMessage(null), 1500);
     } catch (e) {
@@ -193,7 +208,7 @@ export default function MovieDetails() {
       try {
         localStorage.setItem(
           getNoteStorageKey(user.id, movie.id),
-          JSON.stringify({ body, updated_at: new Date().toISOString() })
+          JSON.stringify({ body, updated_at })
         );
         setNoteSavedMessage('Saved.');
         setTimeout(() => setNoteSavedMessage(null), 1500);

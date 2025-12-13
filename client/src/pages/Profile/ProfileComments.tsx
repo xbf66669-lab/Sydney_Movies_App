@@ -105,8 +105,13 @@ export default function ProfileComments() {
       setLoading(true);
       setError(null);
 
-      let notes: Array<{ movieId: number; body: string; updated_at: string | null }> = [];
+      const localNotes = loadFromLocalStorage().map((n) => ({
+        movieId: n.movieId,
+        body: n.body,
+        updated_at: n.updated_at,
+      }));
 
+      let remoteNotes: Array<{ movieId: number; body: string; updated_at: string | null }> = [];
       try {
         const { data, error: noteErr } = await supabase
           .from('notes')
@@ -115,7 +120,7 @@ export default function ProfileComments() {
 
         if (noteErr) throw noteErr;
 
-        notes = ((data || []) as NoteRow[])
+        remoteNotes = ((data || []) as NoteRow[])
           .map((r) => ({
             movieId: r.movie_id,
             body: typeof r.body === 'string' ? r.body : '',
@@ -123,8 +128,26 @@ export default function ProfileComments() {
           }))
           .filter((n) => n.body.trim().length > 0);
       } catch {
-        notes = loadFromLocalStorage().map((n) => ({ movieId: n.movieId, body: n.body, updated_at: n.updated_at }));
+        remoteNotes = [];
       }
+
+      // Merge local + remote (prefer the most recently updated per movie)
+      const merged = new Map<number, { movieId: number; body: string; updated_at: string | null }>();
+      const mergeOne = (n: { movieId: number; body: string; updated_at: string | null }) => {
+        const existing = merged.get(n.movieId);
+        if (!existing) {
+          merged.set(n.movieId, n);
+          return;
+        }
+
+        const at = n.updated_at ? new Date(n.updated_at).getTime() : 0;
+        const bt = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+        if (at >= bt) merged.set(n.movieId, n);
+      };
+
+      [...localNotes, ...remoteNotes].forEach(mergeOne);
+
+      const notes = Array.from(merged.values());
 
       // If there are any notes with missing updated_at, treat as very old.
       notes.sort((a, b) => {
