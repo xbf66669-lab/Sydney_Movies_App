@@ -392,7 +392,7 @@ export default function Watchlist() {
                         />
                       )}
                       <div className="p-4 flex-1 flex flex-col">
-                        <h3 className="text-lg font-semibold mb-1">{movie.title}</h3>
+                        <h3 className="text-lg font-semibold mb-1 text-gray-900">{movie.title}</h3>
                         <p className="text-gray-600 text-sm mb-1">{movie.year}</p>
                         <p className="text-gray-500 text-xs mb-2">
                           Added on {movie.addedDate}

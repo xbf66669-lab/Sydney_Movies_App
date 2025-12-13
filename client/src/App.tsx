@@ -10,6 +10,7 @@ import TvDetails from './pages/TvDetails.tsx';
 import Watchlist from './pages/Watchlist';
 import Profile from './pages/Profile';
 import ProfileSettings from './pages/Profile/ProfileSettings';
+import ProfileComments from './pages/Profile/ProfileComments';
 import Sidebar from './components/Sidebar';
 import Recommendations from './pages/Recommendations';
 import Search from './pages/Search.tsx';
@@ -91,6 +92,7 @@ function AppContent() {
           >
             <Route index element={<Navigate to="settings" replace />} />
             <Route path="settings" element={<ProfileSettings />} />
+            <Route path="comments" element={<ProfileComments />} />
             <Route path="preferences" element={<Navigate to="/filters" replace />} />
           </Route>
 

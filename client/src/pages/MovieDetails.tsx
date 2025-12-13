@@ -143,7 +143,21 @@ export default function MovieDetails() {
       // Fallback when table doesn't exist / RLS blocks / etc.
       try {
         const raw = localStorage.getItem(getNoteStorageKey(userId, movieId));
-        setNoteDraft(typeof raw === 'string' ? raw : '');
+        if (typeof raw !== 'string' || !raw) {
+          setNoteDraft('');
+          return;
+        }
+
+        // Backward compat:
+        // - older builds stored just the note body as a string
+        // - newer builds store JSON: { body, updated_at }
+        try {
+          const parsed = JSON.parse(raw);
+          const body = (parsed as any)?.body;
+          setNoteDraft(typeof body === 'string' ? body : '');
+        } catch {
+          setNoteDraft(raw);
+        }
       } catch {
         setNoteDraft('');
       }
@@ -158,6 +172,7 @@ export default function MovieDetails() {
 
     const body = noteDraft;
     try {
+      const updated_at = new Date().toISOString();
       const { error: upsertErr } = await supabase
         .from('notes')
         .upsert(
@@ -165,7 +180,7 @@ export default function MovieDetails() {
             user_id: user.id,
             movie_id: movie.id,
             body,
-            updated_at: new Date().toISOString(),
+            updated_at,
           } as any,
           { onConflict: 'user_id,movie_id' } as any
         );
@@ -176,7 +191,10 @@ export default function MovieDetails() {
     } catch (e) {
       // Fallback to localStorage so notes still work during development.
       try {
-        localStorage.setItem(getNoteStorageKey(user.id, movie.id), body);
+        localStorage.setItem(
+          getNoteStorageKey(user.id, movie.id),
+          JSON.stringify({ body, updated_at: new Date().toISOString() })
+        );
         setNoteSavedMessage('Saved.');
         setTimeout(() => setNoteSavedMessage(null), 1500);
       } catch {
@@ -432,18 +450,33 @@ export default function MovieDetails() {
                             </svg>
                             {formatRuntime(movie.runtime)}
                           </div>
-                        </div>
-                      </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        {movie.genre.map((genre: string, index: number) => (
-                          <span
-                            key={index}
-                            className="px-3 py-1 bg-white/10 text-white/90 text-xs font-medium rounded-full backdrop-blur-sm hover:bg-white/20 transition-colors"
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isInWatchlist(movie.id)) {
+                                handleRemoveFromWatchlist();
+                              } else {
+                                handleOpenSelectWatchlists();
+                              }
+                            }}
+                            disabled={watchlistLoading}
+                            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold"
                           >
-                            {genre}
-                          </span>
-                        ))}
+                            {isInWatchlist(movie.id) ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {movie.genre.map((genre: string, index: number) => (
+                            <span
+                              key={index}
+                              className="px-3 py-1 bg-white/10 text-white/90 text-xs font-medium rounded-full backdrop-blur-sm hover:bg-white/20 transition-colors"
+                            >
+                              {genre}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
 

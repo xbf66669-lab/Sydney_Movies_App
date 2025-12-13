@@ -32,6 +32,15 @@ type TvWatchlistItem = {
 
 type TvByWatchlist = Record<string, TvWatchlistItem[]>;
 
+type RecentMovie = {
+  id: number;
+  title: string;
+  poster_path?: string | null;
+  vote_average?: number;
+  release_date?: string;
+  overview?: string;
+};
+
 const getTvByWatchlistStorageKey = (userId?: string) =>
   userId ? `tv_watchlist_by_list:${userId}` : 'tv_watchlist_by_list:anon';
 
@@ -41,6 +50,12 @@ export default function Search() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const [recentMovies, setRecentMovies] = useState<RecentMovie[]>([]);
+  const [browseMovies, setBrowseMovies] = useState<RecentMovie[]>([]);
+  const [browsePage, setBrowsePage] = useState(1);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
+  const [browseHasMore, setBrowseHasMore] = useState(true);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [isSelectTvWatchlistsOpen, setIsSelectTvWatchlistsOpen] = useState(false);
   const [tvModalItem, setTvModalItem] = useState<SearchResult | null>(null);
@@ -49,6 +64,25 @@ export default function Search() {
   const [selectedWatchlistIds, setSelectedWatchlistIds] = useState<number[]>([]);
 
   const tvStorageKey = useMemo(() => getTvByWatchlistStorageKey(user?.id), [user?.id]);
+
+  const recentStorageKey = useMemo(
+    () => (user?.id ? `recent_search_movies:${user.id}` : 'recent_search_movies:anon'),
+    [user?.id]
+  );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(recentStorageKey);
+      if (!raw) {
+        setRecentMovies([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      setRecentMovies(Array.isArray(parsed) ? (parsed as RecentMovie[]) : []);
+    } catch {
+      setRecentMovies([]);
+    }
+  }, [recentStorageKey]);
 
   const readTvByWatchlist = (): TvByWatchlist => {
     try {
@@ -205,11 +239,81 @@ export default function Search() {
       const results = (data?.results || []) as any[];
       const filtered = results.filter((r) => r?.media_type === 'movie' || r?.media_type === 'tv');
       setSearchResults(filtered as SearchResult[]);
+
+      // Update recent movies list based on results
+      try {
+        const movies = (filtered as SearchResult[])
+          .filter((r) => r.media_type === 'movie')
+          .slice(0, 6)
+          .map((m) => ({
+            id: m.id,
+            title: m.title || 'Untitled',
+            poster_path: m.poster_path,
+            vote_average: m.vote_average,
+            release_date: m.release_date,
+            overview: m.overview,
+          }));
+
+        if (movies.length) {
+          setRecentMovies((prev) => {
+            const merged = [...movies, ...prev];
+            const seen = new Set<number>();
+            const unique = merged.filter((x) => {
+              if (seen.has(x.id)) return false;
+              seen.add(x.id);
+              return true;
+            });
+            const trimmedList = unique.slice(0, 12);
+            localStorage.setItem(recentStorageKey, JSON.stringify(trimmedList));
+            return trimmedList;
+          });
+        }
+      } catch {
+      }
     } catch (error) {
       console.error('Error searching movies:', error);
       setSearchResults([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBrowseMovies = async (page: number) => {
+    setBrowseLoading(true);
+    setBrowseError(null);
+    try {
+      const res = await fetch(
+        `https://api.themoviedb.org/3/discover/movie?api_key=${import.meta.env.VITE_TMDB_API_KEY}&sort_by=popularity.desc&page=${page}`
+      );
+      const data = await res.json();
+      const results = Array.isArray(data?.results) ? (data.results as any[]) : [];
+      const mapped: RecentMovie[] = results.map((m: any) => ({
+        id: m.id,
+        title: m.title || 'Untitled',
+        poster_path: m.poster_path,
+        vote_average: m.vote_average,
+        release_date: m.release_date,
+        overview: m.overview,
+      }));
+
+      setBrowseMovies((prev) => {
+        const merged = [...prev, ...mapped];
+        const seen = new Set<number>();
+        return merged.filter((x) => {
+          if (seen.has(x.id)) return false;
+          seen.add(x.id);
+          return true;
+        });
+      });
+
+      const totalPages = typeof data?.total_pages === 'number' ? data.total_pages : 1;
+      setBrowseHasMore(page < totalPages && mapped.length > 0);
+    } catch (e) {
+      console.error(e);
+      setBrowseError('Failed to load movies.');
+      setBrowseHasMore(false);
+    } finally {
+      setBrowseLoading(false);
     }
   };
 
@@ -223,6 +327,15 @@ export default function Search() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  useEffect(() => {
+    if (query.trim()) return;
+    setBrowseMovies([]);
+    setBrowsePage(1);
+    setBrowseHasMore(true);
+    void fetchBrowseMovies(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,6 +372,36 @@ export default function Search() {
             </button>
           </div>
         </form>
+
+        {!query.trim() && recentMovies.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-white">Recently searched</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecentMovies([]);
+                  try {
+                    localStorage.removeItem(recentStorageKey);
+                  } catch {
+                  }
+                }}
+                className="text-sm text-gray-300 hover:text-white"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {recentMovies.slice(0, 8).map((m) => (
+                <MovieCard
+                  key={`recent-${m.id}`}
+                  movie={m}
+                  showQuickActions
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -368,7 +511,35 @@ export default function Search() {
         ) : query.trim() ? (
           <div className="text-center py-12 text-gray-400">No results found for "{query.trim()}"</div>
         ) : (
-          <div className="text-center py-12 text-gray-400">Search for movies above to see results.</div>
+          <div className="mt-2">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-white">Popular right now</h2>
+              <Link to="/recommendations" className="text-sm text-blue-300 hover:underline">For you</Link>
+            </div>
+
+            {browseError && <div className="text-sm text-red-400 mb-3">{browseError}</div>}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {browseMovies.map((m) => (
+                <MovieCard key={`browse-${m.id}`} movie={m} showQuickActions />
+              ))}
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                disabled={browseLoading || !browseHasMore}
+                onClick={() => {
+                  const next = browsePage + 1;
+                  setBrowsePage(next);
+                  void fetchBrowseMovies(next);
+                }}
+                className="px-5 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white disabled:opacity-50"
+              >
+                {browseLoading ? 'Loading…' : browseHasMore ? 'Load more' : 'No more movies'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

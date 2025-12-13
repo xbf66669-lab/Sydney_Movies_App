@@ -1,13 +1,50 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const DEFAULT_AVATAR_DATA_URL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="64" fill="url(#g)"/>
+  <circle cx="64" cy="52" r="22" fill="rgba(255,255,255,0.9)"/>
+  <path d="M24 112c8-22 28-34 40-34s32 12 40 34" fill="rgba(255,255,255,0.9)"/>
+</svg>`)} `;
 
 const Sidebar = () => {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [globalQuery, setGlobalQuery] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [avatarDataUrl, setAvatarDataUrl] = useState('');
+
+  const profileStorageKey = useMemo(
+    () => (user?.id ? `profile_settings:${user.id}` : 'profile_settings:anon'),
+    [user?.id]
+  );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(profileStorageKey);
+      if (!raw) {
+        setAvatarDataUrl('');
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && typeof (parsed as any).avatarDataUrl === 'string') {
+        setAvatarDataUrl((parsed as any).avatarDataUrl);
+        return;
+      }
+      setAvatarDataUrl('');
+    } catch {
+      setAvatarDataUrl('');
+    }
+  }, [profileStorageKey]);
 
   const isActive = (path: string) => {
     return location.pathname === path ? 'bg-gray-700' : 'hover:bg-gray-700';
@@ -165,9 +202,11 @@ const Sidebar = () => {
                 onClick={() => setMobileOpen(false)}
                 className={`flex items-center p-2 rounded-lg ${location.pathname.startsWith('/profile') ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
               >
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
+                <img
+                  src={avatarDataUrl || DEFAULT_AVATAR_DATA_URL}
+                  alt="Profile"
+                  className="w-6 h-6 mr-3 rounded-full object-cover"
+                />
                 Profile & Settings
               </Link>
 
@@ -221,9 +260,11 @@ const Sidebar = () => {
           to="/profile/settings"
           className={`flex items-center p-2 rounded-lg ${location.pathname.startsWith('/profile') ? 'bg-gray-700' : 'hover:bg-gray-700'}`}
         >
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
+          <img
+            src={avatarDataUrl || DEFAULT_AVATAR_DATA_URL}
+            alt="Profile"
+            className="w-6 h-6 mr-3 rounded-full object-cover"
+          />
           Profile & Settings
         </Link>
         

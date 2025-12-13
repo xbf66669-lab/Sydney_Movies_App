@@ -17,6 +17,12 @@ export default function Profile() {
                 >
                   Account Settings
                 </Link>
+                <Link
+                  to="/profile/comments"
+                  className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+                >
+                  Recent Comments
+                </Link>
                 <Link 
                   to="/filters" 
                   className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
