@@ -1,5 +1,6 @@
 // client/src/pages/Watchlist.tsx
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { getMovieDetails, getImageUrl } from '../api/tmdb';
@@ -21,17 +22,44 @@ type Movie = {
   addedDate: string;
 };
 
+type TvWatchlistItem = {
+  id: number;
+  title: string;
+  poster_path?: string | null;
+  release_date?: string;
+  vote_average?: number;
+};
+
+type TvByWatchlist = Record<string, TvWatchlistItem[]>;
+
+const getPosterFallbackDataUrl = (title: string) => {
+  const safeTitle = (title || 'No Image').slice(0, 40);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <rect width="300" height="450" fill="#111827"/>
+  <rect x="16" y="16" width="268" height="418" rx="16" fill="#1f2937"/>
+  <text x="150" y="225" text-anchor="middle" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="16">
+    <tspan x="150" dy="0">${safeTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</tspan>
+  </text>
+  <text x="150" y="255" text-anchor="middle" fill="#9ca3af" font-family="Arial, sans-serif" font-size="12">No poster available</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+const getTvByWatchlistStorageKey = (userId?: string) =>
+  userId ? `tv_watchlist_by_list:${userId}` : 'tv_watchlist_by_list:anon';
+
 export default function Watchlist() {
   const { user } = useAuth();
 
   const [watchlists, setWatchlists] = useState<WatchlistRow[]>([]);
-  const [selectedWatchlist, setSelectedWatchlist] = useState<WatchlistRow | null>(
-    null
-  );
+  const [selectedWatchlist, setSelectedWatchlist] = useState<WatchlistRow | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [tvItems, setTvItems] = useState<TvWatchlistItem[]>([]);
   const [loadingWatchlists, setLoadingWatchlists] = useState(true);
   const [loadingMovies, setLoadingMovies] = useState(false);
   const [creating, setCreating] = useState(false);
+
   const [newName, setNewName] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -42,6 +70,7 @@ export default function Watchlist() {
       setWatchlists([]);
       setSelectedWatchlist(null);
       setMovies([]);
+      setTvItems([]);
       setLoadingWatchlists(false);
       return;
     }
@@ -76,6 +105,25 @@ export default function Watchlist() {
     fetchWatchlists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(getTvByWatchlistStorageKey(user.id));
+      const parsed = raw ? JSON.parse(raw) : {};
+
+      if (!selectedWatchlist) {
+        setTvItems([]);
+        return;
+      }
+
+      const byList: TvByWatchlist = parsed && typeof parsed === 'object' ? (parsed as TvByWatchlist) : {};
+      const list = byList[String(selectedWatchlist.watchlist_id)];
+      setTvItems(Array.isArray(list) ? list : []);
+    } catch {
+      setTvItems([]);
+    }
+  }, [user, selectedWatchlist?.watchlist_id]);
 
   const fetchMoviesForWatchlist = async (watchlist: WatchlistRow) => {
     if (!user) return;
@@ -136,6 +184,17 @@ export default function Watchlist() {
   const handleSelectWatchlist = async (watchlist: WatchlistRow) => {
     setSelectedWatchlist(watchlist);
     await fetchMoviesForWatchlist(watchlist);
+
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(getTvByWatchlistStorageKey(user.id));
+      const parsed = raw ? JSON.parse(raw) : {};
+      const byList: TvByWatchlist = parsed && typeof parsed === 'object' ? (parsed as TvByWatchlist) : {};
+      const list = byList[String(watchlist.watchlist_id)];
+      setTvItems(Array.isArray(list) ? list : []);
+    } catch {
+      setTvItems([]);
+    }
   };
 
   const handleCreateWatchlist = async () => {
@@ -188,6 +247,27 @@ export default function Watchlist() {
       setMovies(prev => prev.filter(movie => movie.id !== movieId));
     } catch (err) {
       console.error('Error removing movie from watchlist:', err);
+    }
+  };
+
+  const handleRemoveTv = async (tvId: number) => {
+    if (!user) return;
+    if (!selectedWatchlist) return;
+
+    try {
+      const storageKey = getTvByWatchlistStorageKey(user.id);
+      const raw = localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const byList: TvByWatchlist = parsed && typeof parsed === 'object' ? (parsed as TvByWatchlist) : {};
+
+      const key = String(selectedWatchlist.watchlist_id);
+      const current = Array.isArray(byList[key]) ? byList[key] : [];
+      const next = current.filter((x) => x.id !== tvId);
+      byList[key] = next;
+      localStorage.setItem(storageKey, JSON.stringify(byList));
+      setTvItems(next);
+    } catch (err) {
+      console.error('Error removing TV item:', err);
     }
   };
 
@@ -334,6 +414,57 @@ export default function Watchlist() {
           )}
         </>
       )}
+
+      <div className="mt-10">
+        <h2 className="text-2xl font-bold mb-4 text-gray-900">TV Shows</h2>
+
+        {tvItems.length === 0 ? (
+          <div className="min-h-[12vh] flex items-center justify-center">
+            <div className="text-gray-500 text-sm">No TV shows saved yet.</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {tvItems.map((tv) => (
+              <div
+                key={`tv-${tv.id}`}
+                className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col"
+              >
+                <div className="relative pb-[150%] bg-gray-100">
+                  <Link to={`/tv/${tv.id}`}>
+                    <img
+                      src={tv.poster_path ? `https://image.tmdb.org/t/p/w500${tv.poster_path}` : getPosterFallbackDataUrl(tv.title)}
+                      alt={tv.title}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = getPosterFallbackDataUrl(tv.title);
+                      }}
+                    />
+                  </Link>
+                </div>
+
+                <div className="p-4 flex-1 flex flex-col">
+                  <h3 className="text-lg font-semibold mb-1 text-gray-900">
+                    <Link to={`/tv/${tv.id}`} className="hover:text-blue-600 hover:underline">
+                      {tv.title}
+                    </Link>
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-2">
+                    {tv.release_date ? new Date(tv.release_date).getFullYear() : ''}
+                  </p>
+                  <div className="mt-auto">
+                    <button
+                      onClick={() => handleRemoveTv(tv.id)}
+                      className="w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">

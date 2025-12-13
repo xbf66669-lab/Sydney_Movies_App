@@ -182,6 +182,12 @@ export default function Filters() {
                   type="number"
                   value={yearFrom ?? ''}
                   onChange={(e) => setYearFrom(e.target.value ? clampYear(Number(e.target.value)) : null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      savePreferences();
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-lg bg-gray-900/40 border border-gray-700 text-white"
                   placeholder="e.g. 1990"
                 />
@@ -192,6 +198,12 @@ export default function Filters() {
                   type="number"
                   value={yearTo ?? ''}
                   onChange={(e) => setYearTo(e.target.value ? clampYear(Number(e.target.value)) : null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      savePreferences();
+                    }
+                  }}
                   className="w-full px-3 py-2 rounded-lg bg-gray-900/40 border border-gray-700 text-white"
                   placeholder="e.g. 2025"
                 />

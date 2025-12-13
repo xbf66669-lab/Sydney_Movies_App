@@ -1,5 +1,7 @@
 // client/src/components/MovieCard.tsx
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useWatchlist } from '../context/WatchlistContext';
 
 const getPosterFallbackDataUrl = (title: string) => {
   const safeTitle = (title || 'No Image').slice(0, 40);
@@ -27,14 +29,35 @@ type Movie = {
 
 type MovieCardProps = {
   movie: Movie;
+  showQuickActions?: boolean;
 };
 
-export function MovieCard({ movie }: MovieCardProps) {
+export function MovieCard({ movie, showQuickActions = true }: MovieCardProps) {
+  const { addToWatchlist, removeFromWatchlist, isInWatchlist, loading } = useWatchlist();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const posterUrl = movie.poster_url
     ? movie.poster_url
     : movie.poster_path
       ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
       : null;
+
+  const getTrailerUrl = async (): Promise<string | null> => {
+    try {
+      const res = await fetch(
+        `https://api.themoviedb.org/3/movie/${movie.id}/videos?api_key=${import.meta.env.VITE_TMDB_API_KEY}`
+      );
+      const data = await res.json();
+      const results = data?.results;
+      if (!Array.isArray(results)) return null;
+      const trailer = results.find((v: any) => v?.site === 'YouTube' && (v?.type === 'Trailer' || v?.type === 'Teaser'))
+        || results.find((v: any) => v?.site === 'YouTube');
+      const key = trailer?.key;
+      return typeof key === 'string' && key ? `https://www.youtube.com/watch?v=${encodeURIComponent(key)}` : null;
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <Link
@@ -42,6 +65,71 @@ export function MovieCard({ movie }: MovieCardProps) {
       className="group block overflow-hidden rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors duration-200 shadow-lg"
     >
       <div className="relative aspect-[2/3] overflow-hidden">
+        {showQuickActions && (
+          <div className="absolute top-2 right-2 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMenuOpen((v) => !v);
+              }}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-black/50 hover:bg-black/70 text-white"
+              aria-label="Movie quick actions"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6h.01M12 12h.01M12 18h.01" />
+              </svg>
+            </button>
+
+            {isMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 rounded-lg bg-gray-900 border border-white/10 shadow-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    try {
+                      if (isInWatchlist(movie.id)) {
+                        await removeFromWatchlist(movie.id);
+                      } else {
+                        await addToWatchlist({
+                          id: movie.id,
+                          title: movie.title,
+                          year: movie.release_date ? new Date(movie.release_date).getFullYear() : 0,
+                          rating: typeof movie.vote_average === 'number' ? movie.vote_average : 0,
+                          genre: [],
+                          image: posterUrl || '',
+                        });
+                      }
+                    } catch (err) {
+                      console.error(err);
+                    }
+                  }}
+                  disabled={loading}
+                  className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                >
+                  {isInWatchlist(movie.id) ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    const url = await getTrailerUrl();
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-white/10"
+                >
+                  View Trailer
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {posterUrl ? (
           <img
             src={posterUrl}

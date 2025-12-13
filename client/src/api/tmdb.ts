@@ -16,7 +16,14 @@ export const getPopularMovies = async () => {
 
 export const getMovieDetails = async (id: string) => {
   const response = await fetch(
-    `${BASE_URL}/movie/${id}?api_key=${API_KEY}&append_to_response=credits,watch/providers` 
+    `${BASE_URL}/movie/${id}?api_key=${API_KEY}&append_to_response=credits,watch/providers,videos` 
+  );
+  return response.json();
+};
+
+export const getTvDetails = async (id: string) => {
+  const response = await fetch(
+    `${BASE_URL}/tv/${id}?api_key=${API_KEY}&append_to_response=credits,watch/providers`
   );
   return response.json();
 };

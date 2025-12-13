@@ -6,12 +6,14 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Browse from './pages/Browse';
 import MovieDetails from './pages/MovieDetails';
+import TvDetails from './pages/TvDetails.tsx';
 import Watchlist from './pages/Watchlist';
 import Profile from './pages/Profile';
+import ProfileSettings from './pages/Profile/ProfileSettings';
 import Sidebar from './components/Sidebar';
 import Recommendations from './pages/Recommendations';
-import Search from './pages/Search';
-import Filters from './pages/Filters';
+import Search from './pages/Search.tsx';
+import Filters from './pages/Filters.tsx';
 
 
 function App() {
@@ -42,7 +44,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gray-900 text-white flex">
       {user && <Sidebar />}
-      <main className="flex-1 ml-0 md:ml-64">
+      <main className="flex-1 ml-0 md:ml-64 pt-14 md:pt-0">
         <Routes>
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/dashboard" replace />} />
@@ -76,13 +78,21 @@ function AppContent() {
             element={user ? <MovieDetails /> : <Navigate to="/login" state={{ from: location }} replace />}
           />
           <Route
+            path="/tv/:id"
+            element={user ? <TvDetails /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
             path="/watchlist"
             element={user ? <Watchlist /> : <Navigate to="/login" state={{ from: location }} replace />}
           />
           <Route
             path="/profile"
             element={user ? <Profile /> : <Navigate to="/login" state={{ from: location }} replace />}
-          />
+          >
+            <Route index element={<Navigate to="settings" replace />} />
+            <Route path="settings" element={<ProfileSettings />} />
+            <Route path="preferences" element={<Navigate to="/filters" replace />} />
+          </Route>
 
           <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
         </Routes>

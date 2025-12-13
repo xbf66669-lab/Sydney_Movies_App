@@ -57,11 +57,31 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+const getTrailerUrl = (movie: any) => {
+  const results = movie?.videos?.results;
+  if (!Array.isArray(results)) return null;
+  const trailer = results.find((v: any) => v?.site === 'YouTube' && (v?.type === 'Trailer' || v?.type === 'Teaser'))
+    || results.find((v: any) => v?.site === 'YouTube');
+  const key = trailer?.key;
+  return typeof key === 'string' && key ? `https://www.youtube.com/watch?v=${encodeURIComponent(key)}` : null;
+};
+
+const handleViewTrailer = (movie: any) => {
+  const url = getTrailerUrl(movie);
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
 export default function MovieDetails() {
   const { id } = useParams<{ id: string }>();
   const [movie, setMovie] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSavedMessage, setNoteSavedMessage] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const {
     addToWatchlist,
     addToMultipleWatchlists,
@@ -77,10 +97,102 @@ export default function MovieDetails() {
   const [isSelectWatchlistsOpen, setIsSelectWatchlistsOpen] = useState(false);
   const [selectedWatchlistIds, setSelectedWatchlistIds] = useState<number[]>([]);
 
+  const loadUserWatchlists = async () => {
+    if (!user) return;
+    setWatchlistsLoading(true);
+    try {
+      const { data, error: wlErr } = await supabase
+        .from('watchlists')
+        .select('watchlist_id, name')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (wlErr) throw wlErr;
+      setWatchlists((data || []) as Array<{ watchlist_id: number; name: string | null }>);
+    } catch (e) {
+      console.error('Error loading watchlists:', e);
+      setWatchlists([]);
+    } finally {
+      setWatchlistsLoading(false);
+    }
+  };
+
+  const toggleWatchlistSelection = (watchlistId: number) => {
+    setSelectedWatchlistIds((prev) =>
+      prev.includes(watchlistId) ? prev.filter((x) => x !== watchlistId) : [...prev, watchlistId]
+    );
+  };
+
+  const getNoteStorageKey = (userId: string, movieId: number) => `movie_note:${userId}:${movieId}`;
+
+  const loadNote = async (userId: string, movieId: number) => {
+    setNoteError(null);
+    try {
+      const { data, error: noteErr } = await supabase
+        .from('notes')
+        .select('body')
+        .eq('user_id', userId)
+        .eq('movie_id', movieId)
+        .maybeSingle();
+
+      if (noteErr) throw noteErr;
+      const body = (data as any)?.body;
+      setNoteDraft(typeof body === 'string' ? body : '');
+      return;
+    } catch (_e) {
+      // Fallback when table doesn't exist / RLS blocks / etc.
+      try {
+        const raw = localStorage.getItem(getNoteStorageKey(userId, movieId));
+        setNoteDraft(typeof raw === 'string' ? raw : '');
+      } catch {
+        setNoteDraft('');
+      }
+    }
+  };
+
+  const saveNote = async () => {
+    if (!user || !movie) return;
+    setNoteSaving(true);
+    setNoteSavedMessage(null);
+    setNoteError(null);
+
+    const body = noteDraft;
+    try {
+      const { error: upsertErr } = await supabase
+        .from('notes')
+        .upsert(
+          {
+            user_id: user.id,
+            movie_id: movie.id,
+            body,
+            updated_at: new Date().toISOString(),
+          } as any,
+          { onConflict: 'user_id,movie_id' } as any
+        );
+
+      if (upsertErr) throw upsertErr;
+      setNoteSavedMessage('Saved.');
+      setTimeout(() => setNoteSavedMessage(null), 1500);
+    } catch (e) {
+      // Fallback to localStorage so notes still work during development.
+      try {
+        localStorage.setItem(getNoteStorageKey(user.id, movie.id), body);
+        setNoteSavedMessage('Saved.');
+        setTimeout(() => setNoteSavedMessage(null), 1500);
+      } catch {
+        setNoteError('Failed to save note.');
+      }
+      console.error('Error saving note:', e);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
   useEffect(() => {
     const fetchMovie = async () => {
       try {
         setLoading(true);
+
         const data = await getMovieDetails(id!);
 
         // Transform the API data to match your expected format
@@ -116,36 +228,17 @@ export default function MovieDetails() {
     fetchMovie();
   }, [id]);
 
+  useEffect(() => {
+    if (!user || !movie) return;
+    if (typeof movie.id !== 'number') return;
+    loadNote(user.id, movie.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, movie?.id]);
+
   const formatRuntime = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  };
-
-  const loadUserWatchlists = async () => {
-    if (!user) return;
-    setWatchlistsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('watchlists')
-        .select('watchlist_id, name')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setWatchlists(data || []);
-    } catch (err) {
-      console.error('Error loading user watchlists:', err);
-      setWatchlists([]);
-    } finally {
-      setWatchlistsLoading(false);
-    }
-  };
-
-  const toggleWatchlistSelection = (id: number) => {
-    setSelectedWatchlistIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
   };
 
   const handleOpenSelectWatchlists = async () => {
@@ -354,105 +447,52 @@ export default function MovieDetails() {
                       </div>
                     </div>
 
-                    <div className="flex-shrink-0">
-                      {isInWatchlist(movie.id) ? (
-                        <button
-                          onClick={handleRemoveFromWatchlist}
-                          disabled={watchlistLoading}
-                          className="flex items-center justify-center px-6 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 bg-gradient-to-r from-red-500 to-rose-600 text-white font-medium shadow-lg hover:shadow-red-500/30"
+                    <div className="flex-shrink-0 relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsActionsMenuOpen((v) => !v)}
+                        className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+                        aria-label="Movie actions"
+                      >
+                        <svg
+                          className="w-6 h-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          {watchlistLoading ? (
-                            <>
-                              <svg
-                                className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                ></circle>
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                              </svg>
-                              Removing...
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                className="w-5 h-5 mr-2"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                              In Watchlist
-                            </>
-                          )}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={handleOpenSelectWatchlists}
-                          disabled={watchlistLoading}
-                          className="flex items-center justify-center px-6 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium shadow-lg hover:shadow-indigo-500/30"
-                        >
-                          {watchlistLoading ? (
-                            <>
-                              <svg
-                                className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                ></circle>
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                              </svg>
-                              Adding...
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                className="w-5 h-5 mr-2"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M12 4v16m8-8H4"
-                                />
-                              </svg>
-                              Add to Watchlist
-                            </>
-                          )}
-                        </button>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6h.01M12 12h.01M12 18h.01" />
+                        </svg>
+                      </button>
+
+                      {isActionsMenuOpen && (
+                        <div className="absolute right-0 mt-3 w-56 rounded-xl bg-gray-900 border border-white/10 shadow-xl overflow-hidden z-20">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsActionsMenuOpen(false);
+                              if (isInWatchlist(movie.id)) {
+                                handleRemoveFromWatchlist();
+                              } else {
+                                handleOpenSelectWatchlists();
+                              }
+                            }}
+                            disabled={watchlistLoading}
+                            className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                          >
+                            {isInWatchlist(movie.id) ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsActionsMenuOpen(false);
+                              handleViewTrailer(movie);
+                            }}
+                            disabled={!getTrailerUrl(movie)}
+                            className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+                          >
+                            View Trailer
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -461,6 +501,32 @@ export default function MovieDetails() {
                   <div className="bg-black/30 p-6 rounded-2xl backdrop-blur-sm border border-white/10">
                     <h2 className="text-2xl font-bold text-white mb-4">Overview</h2>
                     <p className="text-gray-300 leading-relaxed text-lg">{movie.overview}</p>
+                  </div>
+
+                  <div className="bg-black/30 p-6 rounded-2xl backdrop-blur-sm border border-white/10">
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                      <h2 className="text-2xl font-bold text-white">My Notes</h2>
+                      <button
+                        type="button"
+                        onClick={saveNote}
+                        disabled={noteSaving || !user}
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium"
+                      >
+                        {noteSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                    {noteError && <div className="mb-3 text-sm text-red-400">{noteError}</div>}
+                    {noteSavedMessage && <div className="mb-3 text-sm text-green-400">{noteSavedMessage}</div>}
+                    {!user ? (
+                      <div className="text-sm text-gray-300">Sign in to save notes to your profile.</div>
+                    ) : (
+                      <textarea
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        className="w-full min-h-[140px] px-4 py-3 rounded-xl bg-gray-900/50 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Write anything you want about this movie…"
+                      />
+                    )}
                   </div>
 
                   {/* Where to Watch */}

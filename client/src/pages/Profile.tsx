@@ -18,10 +18,10 @@ export default function Profile() {
                   Account Settings
                 </Link>
                 <Link 
-                  to="/profile/preferences" 
+                  to="/filters" 
                   className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
                 >
-                  Preferences
+                  Filters
                 </Link>
               </nav>
             </div>
