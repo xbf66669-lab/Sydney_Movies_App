@@ -6,6 +6,20 @@ import { supabase } from '../lib/supabase';
 
 import { getMovieDetails, getImageUrl } from '../api/tmdb';
 
+const getPosterFallbackDataUrl = (title: string) => {
+  const safeTitle = (title || 'No Image').slice(0, 40);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750" viewBox="0 0 500 750">
+  <rect width="500" height="750" fill="#111827"/>
+  <rect x="24" y="24" width="452" height="702" rx="20" fill="#1f2937"/>
+  <text x="250" y="370" text-anchor="middle" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="22">
+    <tspan x="250" dy="0">${safeTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</tspan>
+  </text>
+  <text x="250" y="410" text-anchor="middle" fill="#9ca3af" font-family="Arial, sans-serif" font-size="16">No poster available</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
 // Error Boundary Component
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
@@ -255,7 +269,7 @@ export default function MovieDetails() {
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
+                  strokeWidth="2"
                   d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
@@ -276,7 +290,7 @@ export default function MovieDetails() {
                   alt={movie.title}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   onError={(e) => {
-                    e.currentTarget.src = `https://via.placeholder.com/500x750?text=${encodeURIComponent(movie.title)}`;
+                    e.currentTarget.src = getPosterFallbackDataUrl(movie.title);
                   }}
                 />
               </div>

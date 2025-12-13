@@ -75,24 +75,53 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       const movies: Movie[] = data
         ? await Promise.all(
             data.map(async (item: any) => {
-              const details = await getMovieDetails(String(item.movie_id));
-              const posterUrl = details ? getImageUrl(details.poster_path, 'w500') : null;
+              try {
+                const details = await getMovieDetails(String(item.movie_id));
+                const hasValidDetails = details && typeof details.id === 'number' && typeof details.title === 'string';
+                if (!hasValidDetails) {
+                  return {
+                    id: Number(item.movie_id),
+                    title: 'Unknown title',
+                    year: 0,
+                    rating: 0,
+                    genre: [],
+                    image: '',
+                    addedDate: item.added_at
+                      ? new Date(item.added_at).toISOString().split('T')[0]
+                      : new Date().toISOString().split('T')[0],
+                  };
+                }
 
-              return {
-                id: details.id,
-                title: details.title,
-                year: details.release_date
-                  ? new Date(details.release_date).getFullYear()
-                  : 0,
-                rating: details.vote_average,
-                genre:
-                  details.genres?.map((g: { id: number; name: string }) => g.name) ||
-                  [],
-                image: posterUrl || '',
-                addedDate: item.added_at
-                  ? new Date(item.added_at).toISOString().split('T')[0]
-                  : new Date().toISOString().split('T')[0],
-              };
+                const posterUrl = getImageUrl(details.poster_path, 'w500');
+
+                return {
+                  id: details.id,
+                  title: details.title,
+                  year: details.release_date
+                    ? new Date(details.release_date).getFullYear()
+                    : 0,
+                  rating: details.vote_average,
+                  genre:
+                    details.genres?.map((g: { id: number; name: string }) => g.name) ||
+                    [],
+                  image: posterUrl || '',
+                  addedDate: item.added_at
+                    ? new Date(item.added_at).toISOString().split('T')[0]
+                    : new Date().toISOString().split('T')[0],
+                };
+              } catch (_e) {
+                return {
+                  id: Number(item.movie_id),
+                  title: 'Unknown title',
+                  year: 0,
+                  rating: 0,
+                  genre: [],
+                  image: '',
+                  addedDate: item.added_at
+                    ? new Date(item.added_at).toISOString().split('T')[0]
+                    : new Date().toISOString().split('T')[0],
+                };
+              }
             })
           )
         : [];
@@ -146,20 +175,35 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       // 2) Ensure the movie exists in movies table (link TMDb → Supabase)
       const details = await getMovieDetails(String(movie.id));
 
+      // TMDb can return error-shaped objects (e.g. { status_code, status_message })
+      // or incomplete payloads; fall back to the UI-provided movie fields.
+      const safeTitle =
+        typeof details?.title === 'string' && details.title.trim()
+          ? details.title
+          : movie.title;
+
+      const safeReleaseYear =
+        details?.release_date
+          ? new Date(details.release_date).getFullYear()
+          : typeof movie.year === 'number'
+            ? movie.year
+            : null;
+
+      const safePosterUrl =
+        getImageUrl(details?.poster_path, 'w500') || movie.image || null;
+
       const { error: movieUpsertError } = await supabase
         .from('movies')
         .upsert(
           {
             movie_id: movie.id, // TMDb id
-            title: details.title,
-            release_year: details.release_date
-              ? new Date(details.release_date).getFullYear()
-              : null,
+            title: safeTitle,
+            release_year: safeReleaseYear,
             age_rating: details.adult ? 'R' : 'PG-13',
             runtime_minutes: details.runtime || 0,
             original_language: details.original_language || 'en',
             average_viewer_rating: details.vote_average,
-            poster_url: getImageUrl(details.poster_path, 'w500') || null,
+            poster_url: safePosterUrl,
           },
           { onConflict: 'movie_id' }
         );

@@ -3,12 +3,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Home from './pages/Home';
+import Dashboard from './pages/Dashboard';
 import Browse from './pages/Browse';
 import MovieDetails from './pages/MovieDetails';
 import Watchlist from './pages/Watchlist';
 import Profile from './pages/Profile';
-import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
+import Recommendations from './pages/Recommendations';
+import Search from './pages/Search';
+import Filters from './pages/Filters';
 
 
 function App() {
@@ -37,16 +40,32 @@ function AppContent() {
 
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      {user && <Navbar />}
-      <main className="pt-16"> {/* Add padding to account for fixed navbar */}
+    <div className="min-h-screen bg-gray-900 text-white flex">
+      {user && <Sidebar />}
+      <main className="flex-1 ml-0 md:ml-64">
         <Routes>
-          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
-          <Route path="/register" element={!user ? <Register /> : <Navigate to="/" replace />} />
-         
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/register" element={!user ? <Register /> : <Navigate to="/dashboard" replace />} />
+
           <Route
             path="/"
-            element={user ? <Home /> : <Navigate to="/login" state={{ from: location }} replace />}
+            element={user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/dashboard"
+            element={user ? <Dashboard /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/search"
+            element={user ? <Search /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/recommendations"
+            element={user ? <Recommendations /> : <Navigate to="/login" state={{ from: location }} replace />}
+          />
+          <Route
+            path="/filters"
+            element={user ? <Filters /> : <Navigate to="/login" state={{ from: location }} replace />}
           />
           <Route
             path="/browse"
@@ -64,6 +83,8 @@ function AppContent() {
             path="/profile"
             element={user ? <Profile /> : <Navigate to="/login" state={{ from: location }} replace />}
           />
+
+          <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
         </Routes>
       </main>
     </div>

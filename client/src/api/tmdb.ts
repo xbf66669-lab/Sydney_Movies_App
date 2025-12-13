@@ -1,11 +1,11 @@
 const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 const BASE_URL = 'https://api.themoviedb.org/3';
-const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 
 export const getPopularMoviesPaged = async (page: number = 1) => {
   const response = await fetch(
     `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=popularity.desc&page=${page}`
   );
+
   return response.json();
 };
 
@@ -21,6 +21,6 @@ export const getMovieDetails = async (id: string) => {
   return response.json();
 };
 
-export const getImageUrl = (path: string, size: string = 'w500') => {
-  return path ? `https://image.tmdb.org/t/p/${size}${path}` : null;
+export const getImageUrl = (path: string | null | undefined, size: string = 'w500') => {
+  return path ? `https://image.tmdb.org/t/p/${size}${path}` : undefined;
 };

@@ -1,6 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getPopularMoviesPaged } from '../api/tmdb';
 import { Link } from 'react-router-dom';
+
+const getPosterFallbackDataUrl = (title: string) => {
+  const safeTitle = (title || 'No Image').slice(0, 40);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <rect width="300" height="450" fill="#111827"/>
+  <rect x="16" y="16" width="268" height="418" rx="16" fill="#1f2937"/>
+  <text x="150" y="225" text-anchor="middle" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="16">
+    <tspan x="150" dy="0">${safeTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</tspan>
+  </text>
+  <text x="150" y="255" text-anchor="middle" fill="#9ca3af" font-family="Arial, sans-serif" font-size="12">No poster available</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
 
 interface Movie {
   id: number;
@@ -31,7 +45,7 @@ export default function Browse() {
       setMovies(prev => {
         // Filter out any duplicates
         const existingIds = new Set(prev.map(movie => movie.id));
-        const uniqueNewMovies = newMovies.filter(movie => !existingIds.has(movie.id));
+        const uniqueNewMovies = (newMovies as Movie[]).filter((movie) => !existingIds.has(movie.id));
         return [...prev, ...uniqueNewMovies];
       });
       
@@ -90,7 +104,7 @@ export default function Browse() {
               alt={movie.title}
               className="w-full h-64 object-cover"
               onError={(e) => {
-                e.currentTarget.src = 'https://via.placeholder.com/300x450?text=No+Image';
+                e.currentTarget.src = getPosterFallbackDataUrl(movie.title);
               }}
             />
             <div className="p-4">

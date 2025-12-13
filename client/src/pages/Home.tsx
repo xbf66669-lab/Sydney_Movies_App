@@ -9,6 +9,20 @@ import {
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
 
+const getPosterFallbackDataUrl = (title: string) => {
+  const safeTitle = (title || 'No Image').slice(0, 40);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <rect width="300" height="450" fill="#111827"/>
+  <rect x="16" y="16" width="268" height="418" rx="16" fill="#1f2937"/>
+  <text x="150" y="225" text-anchor="middle" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="16">
+    <tspan x="150" dy="0">${safeTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</tspan>
+  </text>
+  <text x="150" y="255" text-anchor="middle" fill="#9ca3af" font-family="Arial, sans-serif" font-size="12">No poster available</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
 interface Movie {
   id: number;
   title: string;
@@ -26,9 +40,17 @@ export default function Home() {
     const fetchTrendingMovies = async () => {
       try {
         const data = await getPopularMovies();
-        setTrendingMovies(data.results.slice(0, 6));
+        if (data && Array.isArray(data)) {
+          setTrendingMovies(data.slice(0, 6));
+        } else if (data?.results) {
+          setTrendingMovies(data.results.slice(0, 6));
+        } else {
+          console.error('Unexpected data format:', data);
+          setTrendingMovies([]);
+        }
       } catch (error) {
         console.error('Error fetching trending movies:', error);
+        setTrendingMovies([]);
       } finally {
         setLoading(false);
       }
@@ -127,12 +149,12 @@ export default function Home() {
                       src={
                         movie.poster_path
                           ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` 
-                          : 'https://via.placeholder.com/300x450?text=No+Poster'
+                          : getPosterFallbackDataUrl(movie.title)
                       }
                       alt={movie.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/300x450?text=No+Image';
+                        e.currentTarget.src = getPosterFallbackDataUrl(movie.title);
                       }}
                     />
                   </div>

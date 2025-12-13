@@ -4,37 +4,60 @@ import { useWatchlist } from '../context/WatchlistContext';
 import { useEffect, useState } from 'react';
 import { getPopularMovies, getImageUrl } from '../api/tmdb';
 
+const getPosterFallbackDataUrl = (title: string) => {
+  const safeTitle = (title || 'No Image').slice(0, 40);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <rect width="300" height="450" fill="#111827"/>
+  <rect x="16" y="16" width="268" height="418" rx="16" fill="#1f2937"/>
+  <text x="150" y="225" text-anchor="middle" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="16">
+    <tspan x="150" dy="0">${safeTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</tspan>
+  </text>
+  <text x="150" y="255" text-anchor="middle" fill="#9ca3af" font-family="Arial, sans-serif" font-size="12">No poster available</text>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+type MovieItem = {
+  id: number;
+  title: string;
+  year: number;
+  rating: number;
+  genre: string[];
+  image?: string;
+};
+
 export default function Movies() {
   const { addToWatchlist, isInWatchlist, removeFromWatchlist } = useWatchlist();
-  const [movies, setMovies] = useState([]);
+  const [movies, setMovies] = useState<MovieItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMovies = async () => {
       try {
         const data = await getPopularMovies();
         // Transform the API data to match your expected format
-        const formattedMovies = data.map(movie => ({
-          id: movie.id,
-          title: movie.title,
-          year: new Date(movie.release_date).getFullYear(),
-          rating: movie.vote_average,
-          genre: movie.genre_ids.map(id => {
+        const formattedMovies: MovieItem[] = (data as any[]).map((movie: any) => ({
+          id: Number(movie.id),
+          title: String(movie.title ?? ''),
+          year: movie.release_date ? new Date(movie.release_date).getFullYear() : 0,
+          rating: Number(movie.vote_average ?? 0),
+          genre: (movie.genre_ids as number[] | undefined)?.map((id: number) => {
             // Map genre IDs to names (you might want to fetch this from the API)
-            const genres = {
+            const genres: Record<number, string> = {
               28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy',
               80: 'Crime', 18: 'Drama', 10751: 'Family', 14: 'Fantasy',
               36: 'History', 27: 'Horror', 10402: 'Music', 9648: 'Mystery',
               10749: 'Romance', 878: 'Sci-Fi', 53: 'Thriller', 10752: 'War'
             };
             return genres[id] || 'Unknown';
-          }),
+          }) || [],
           image: getImageUrl(movie.poster_path)
         }));
         setMovies(formattedMovies);
       } catch (err) {
-        setError(err.message);
+        setError(err instanceof Error ? err.message : 'Failed to load movies');
       } finally {
         setLoading(false);
       }
@@ -77,7 +100,7 @@ export default function Movies() {
                     alt={movie.title}
                     className="absolute inset-0 w-full h-full object-cover group-hover:opacity-90 transition-opacity"
                     onError={(e) => {
-                      e.currentTarget.src = `https://via.placeholder.com/300x450?text=${encodeURIComponent(movie.title)}`;
+                      e.currentTarget.src = getPosterFallbackDataUrl(movie.title);
                     }}
                   />
                 </Link>
@@ -140,7 +163,7 @@ export default function Movies() {
                       year: movie.year,
                       rating: movie.rating,
                       genre: movie.genre,
-                      image: movie.image
+                      image: movie.image || ''
                     })}
                     className="mt-3 w-full bg-blue-100 text-blue-700 py-2 rounded-md hover:bg-blue-200 transition-colors flex items-center justify-center"
                   >
