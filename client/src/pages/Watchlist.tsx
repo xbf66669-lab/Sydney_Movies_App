@@ -278,7 +278,7 @@ export default function Watchlist() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="text-gray-600 text-lg">
           Please sign in to view your watchlists.
         </div>
@@ -288,14 +288,14 @@ export default function Watchlist() {
 
   if (loadingWatchlists) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="text-gray-600 text-lg">Loading your watchlists...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-transparent p-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
         <h1 className="text-3xl font-bold">Your Watchlists</h1>
 
@@ -332,7 +332,7 @@ export default function Watchlist() {
       ) : (
         <>
           <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-3 text-gray-800">
+            <h2 className="text-xl font-semibold mb-3 text-white">
               Watchlist Collections
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -361,7 +361,7 @@ export default function Watchlist() {
 
           {selectedWatchlist && (
             <div>
-              <h2 className="text-2xl font-bold mb-4 text-gray-900">
+              <h2 className="text-2xl font-bold mb-4 text-white">
                 {selectedWatchlist.name || 'Untitled Watchlist'}
               </h2>
 
@@ -416,7 +416,7 @@ export default function Watchlist() {
       )}
 
       <div className="mt-10">
-        <h2 className="text-2xl font-bold mb-4 text-gray-900">TV Shows</h2>
+        <h2 className="text-2xl font-bold mb-4 text-white">TV Shows</h2>
 
         {tvItems.length === 0 ? (
           <div className="min-h-[12vh] flex items-center justify-center">
